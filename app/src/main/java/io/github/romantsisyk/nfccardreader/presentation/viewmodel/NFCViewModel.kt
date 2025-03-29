@@ -35,7 +35,7 @@ class NFCReaderViewModel @Inject constructor(
                     _error.value = "ProcessNfcIntentUseCase is not initialized (testing only)"
                     return@launch
                 }
-                
+
                 val data = processNfcIntentUseCase.execute(intent)
                 _nfcTagData.value = data.parsedTlvData
                 _rawResponse.value = data.rawResponse
@@ -45,6 +45,10 @@ class NFCReaderViewModel @Inject constructor(
                 _error.value = e.message
             }
         }
+    }
+
+    fun setError(message: String) {
+        _error.value = message
     }
 
     fun clearNfcData() {
