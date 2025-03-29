@@ -35,7 +35,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
         
-        // Add this for record desugaring
+        // Core library desugaring configuration
         isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
@@ -50,6 +50,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Fix for duplicate META-INF files
+            excludes += "META-INF/gradle/incremental.annotation.processors"
         }
     }
     // Enable test options
@@ -57,20 +59,29 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
-            
+
             // Add VM args for Mockito with Java 21
             all {
                 it.jvmArgs("-Dnet.bytebuddy.experimental=true")
             }
         }
     }
+    
+    // Fix for R8/D8 with record desugaring issues
+    lintOptions {
+        disable += "InvalidPackage"
+    }
 }
 
 dependencies {
-    // Add this for record desugaring
+    // Record desugaring support
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_configuration:2.0.3")
     
-    implementation(libs.hilt.android)
+    // Fix for dagger-spi issue - exclude the problematic dependency
+    implementation(libs.hilt.android) {
+        exclude(group = "com.google.dagger", module = "dagger-spi")
+    }
     implementation(libs.hilt.compiler)
 
     implementation(libs.androidx.core.ktx)
@@ -102,10 +113,6 @@ dependencies {
     
     // Robolectric for Android framework simulation in unit tests
     testImplementation("org.robolectric:robolectric:4.9")
-    
-    // Hilt testing
-    testImplementation(libs.hilt.android.testing)
-    testImplementation(libs.hilt.android.compiler)
     
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

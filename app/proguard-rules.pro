@@ -14,8 +14,28 @@
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep Dagger annotations
+-keepclassmembers,allowobfuscation class * {
+    @javax.inject.* *;
+    @dagger.* *;
+    <init>();
+}
+
+# Keep Dagger services
+-keep class javax.inject.** { *; }
+-keep class **$$Factory { *; }
+-keep class **$$Impl { *; }
+
+# Fix for R8/D8 Record desugaring issues
+-keep class java.lang.record.** { *; }
+-keep class ** extends java.lang.Record { *; }
+-keepclassmembers class * extends java.lang.Record {
+    <init>(...);
+    java.lang.Record.*;
+}
