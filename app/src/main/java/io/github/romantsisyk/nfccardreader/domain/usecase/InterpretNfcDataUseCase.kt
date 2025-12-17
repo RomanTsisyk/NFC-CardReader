@@ -5,10 +5,29 @@ import io.github.romantsisyk.nfccardreader.domain.EmvTag
 import io.github.romantsisyk.nfccardreader.domain.model.NFCData
 import io.github.romantsisyk.nfccardreader.utils.NfcDataDecoder
 
+/**
+ * Use case for interpreting raw NFC response data into structured NFCData.
+ *
+ * This class transforms raw byte arrays from NFC card communications into
+ * human-readable, structured data. It handles EMV tag detection and delegates
+ * specific value interpretation to [NfcDataDecoder].
+ *
+ * @see NFCData for the output data structure
+ * @see NfcDataDecoder for value interpretation utilities
+ */
 class InterpretNfcDataUseCase {
 
     private val TAG = "InterpretNfcDataUseCase"
 
+    /**
+     * Executes interpretation of raw NFC response bytes.
+     *
+     * Parses the response byte array, identifies EMV tags, and constructs
+     * a comprehensive [NFCData] object containing all interpreted fields.
+     *
+     * @param response Raw byte array from NFC card communication
+     * @return NFCData object with all interpreted card information
+     */
     fun execute(response: ByteArray): NFCData {
         val hexBytes = response.map { "%02X".format(it) }
         val interpretedData = mutableMapOf<EmvTag, String>()

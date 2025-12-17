@@ -4,10 +4,30 @@ import android.util.Log
 import io.github.romantsisyk.nfccardreader.domain.EmvTag
 import io.github.romantsisyk.nfccardreader.utils.NfcDataMasker
 
+/**
+ * Use case for parsing TLV (Tag-Length-Value) encoded data from NFC responses.
+ *
+ * This class handles the parsing of EMV-formatted TLV data commonly found
+ * in payment card NFC communications. It extracts and decodes various
+ * tags including cardholder name, PAN (masked for security), and expiration date.
+ *
+ * @see EmvTag for supported EMV tags
+ * @see NfcDataMasker for PAN masking logic
+ */
 class ParseTLVUseCase {
 
     private val TAG = "ParseTLVUseCase"
 
+    /**
+     * Parses TLV-encoded byte array into a map of tag names to values.
+     *
+     * The parsing follows the EMV TLV structure where each data element
+     * consists of a tag, length, and value. Sensitive data like PANs
+     * are automatically masked for PCI-DSS compliance.
+     *
+     * @param data The raw byte array containing TLV-encoded data
+     * @return Map of tag descriptions to their decoded/masked values
+     */
     fun execute(data: ByteArray): Map<String, String> {
         val result = mutableMapOf<String, String>()
         var index = 0

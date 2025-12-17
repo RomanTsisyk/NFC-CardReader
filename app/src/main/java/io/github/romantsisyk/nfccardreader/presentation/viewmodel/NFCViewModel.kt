@@ -5,57 +5,185 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.romantsisyk.nfccardreader.domain.model.NFCData
-import io.github.romantsisyk.nfccardreader.domain.usecase.ProcessNfcIntentUseCase
+import io.github.romantsisyk.nfccardreader.domain.model.NfcError
+import io.github.romantsisyk.nfccardreader.domain.model.NfcResult
+import io.github.romantsisyk.nfccardreader.domain.repository.NfcAvailability
+import io.github.romantsisyk.nfccardreader.domain.repository.NfcRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * UI state for the NFC Reader screen.
+ */
+data class NfcUiState(
+    val isLoading: Boolean = false,
+    val nfcTagData: Map<String, String> = emptyMap(),
+    val rawResponse: String = "Empty NFC Response",
+    val additionalInfo: NFCData? = null,
+    val error: NfcError? = null,
+    val errorMessage: String? = null,
+    val nfcAvailability: NfcAvailability? = null,
+    val lastScanSaved: Boolean = false
+)
+
+/**
+ * ViewModel for NFC Reader functionality.
+ *
+ * Manages UI state and coordinates between the UI layer and repository.
+ *
+ * @property repository Repository for NFC operations and data persistence
+ */
 @HiltViewModel
 class NFCReaderViewModel @Inject constructor(
-    private val processNfcIntentUseCase: ProcessNfcIntentUseCase?
+    private val repository: NfcRepository
 ) : ViewModel() {
 
-    private val _nfcTagData = MutableStateFlow<Map<String, String>>(emptyMap())
-    val nfcTagData: StateFlow<Map<String, String>> get() = _nfcTagData
+    private val _uiState = MutableStateFlow(NfcUiState())
+    val uiState: StateFlow<NfcUiState> = _uiState
 
-    private val _rawResponse = MutableStateFlow("Empty NFC Response")
-    val rawResponse: StateFlow<String> get() = _rawResponse
+    // Legacy state flows for backward compatibility
+    val nfcTagData: StateFlow<Map<String, String>>
+        get() = MutableStateFlow(_uiState.value.nfcTagData)
 
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> get() = _error
+    val rawResponse: StateFlow<String>
+        get() = MutableStateFlow(_uiState.value.rawResponse)
 
-    private val _additionalInfo = MutableStateFlow<NFCData?>(null)
-    val additionalInfo: StateFlow<NFCData?> get() = _additionalInfo
+    val error: StateFlow<String?>
+        get() = MutableStateFlow(_uiState.value.errorMessage)
 
+    val additionalInfo: StateFlow<NFCData?>
+        get() = MutableStateFlow(_uiState.value.additionalInfo)
+
+    /**
+     * Flow of scan history from the database.
+     */
+    val scanHistory = repository.getScanHistory()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    init {
+        checkNfcAvailability()
+    }
+
+    /**
+     * Checks NFC availability on the device.
+     */
+    fun checkNfcAvailability() {
+        when (val result = repository.checkNfcAvailability()) {
+            is NfcResult.Success -> {
+                _uiState.value = _uiState.value.copy(nfcAvailability = result.data)
+            }
+            is NfcResult.Error -> {
+                _uiState.value = _uiState.value.copy(
+                    error = result.error,
+                    errorMessage = result.message
+                )
+            }
+            is NfcResult.Loading -> { /* Not expected here */ }
+        }
+    }
+
+    /**
+     * Processes an NFC intent and updates UI state.
+     *
+     * @param intent The NFC intent to process
+     */
     fun processNfcIntent(intent: Intent) {
         viewModelScope.launch {
-            try {
-                if (processNfcIntentUseCase == null) {
-                    _error.value = "ProcessNfcIntentUseCase is not initialized (testing only)"
-                    return@launch
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, errorMessage = null)
+
+            when (val result = repository.processNfcIntent(intent)) {
+                is NfcResult.Success -> {
+                    val data = result.data
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        nfcTagData = data.parsedTlvData,
+                        rawResponse = data.rawResponse,
+                        additionalInfo = data,
+                        error = null,
+                        errorMessage = null,
+                        lastScanSaved = false
+                    )
                 }
-                
-                val data = processNfcIntentUseCase.execute(intent)
-                _nfcTagData.value = data.parsedTlvData
-                _rawResponse.value = data.rawResponse
-                _additionalInfo.value = data
-                _error.value = null // Clear errors
-            } catch (e: Exception) {
-                _error.value = e.message
+                is NfcResult.Error -> {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = result.error,
+                        errorMessage = result.message
+                    )
+                }
+                is NfcResult.Loading -> {
+                    _uiState.value = _uiState.value.copy(isLoading = true)
+                }
             }
         }
     }
 
-    fun clearNfcData() {
-        _nfcTagData.value = emptyMap()
-        _rawResponse.value = "Empty NFC Response"
-        _error.value = null
-        _additionalInfo.value = null
+    /**
+     * Saves the current scan to history.
+     */
+    fun saveCurrentScan() {
+        val currentData = _uiState.value.additionalInfo ?: return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+
+            when (val result = repository.saveScanRecord(currentData)) {
+                is NfcResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        lastScanSaved = true
+                    )
+                }
+                is NfcResult.Error -> {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = result.error,
+                        errorMessage = result.message
+                    )
+                }
+                is NfcResult.Loading -> { /* Not expected here */ }
+            }
+        }
     }
 
+    /**
+     * Deletes a scan record from history.
+     *
+     * @param id The ID of the scan to delete
+     */
+    fun deleteScan(id: Long) {
+        viewModelScope.launch {
+            repository.deleteScan(id)
+        }
+    }
+
+    /**
+     * Clears all scan history.
+     */
+    fun clearHistory() {
+        viewModelScope.launch {
+            repository.clearHistory()
+        }
+    }
+
+    /**
+     * Clears the current NFC data and resets UI state.
+     */
+    fun clearNfcData() {
+        _uiState.value = NfcUiState(nfcAvailability = _uiState.value.nfcAvailability)
+    }
+
+    /**
+     * Loads mock NFC data for testing purposes.
+     */
     fun processMockNfcIntent() {
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+
             val mockData = NFCData(
                 rawResponse = "6F 37 84 0E 325041592E5359532E4444463031 A5 25 88 01 02 5F 2D 02 656E " +
                         "9F 11 01 01 50 0A 4D617374657243617264 87 01 01 9F 38 06 9F1A029505 " +
@@ -69,8 +197,8 @@ class NFCReaderViewModel @Inject constructor(
                         "9F 10 12 0110A00003220000000000000000000F 9F 6E 04 04210103 90 00",
                 parsedTlvData = mapOf(
                     "Cardholder Name" to "JOHN Q. PUBLIC",
-                    "Application PAN" to "5412 3456 7890 1234",
-                    "Track2 Equivalent Data" to "5412345678901234D250228753622340",
+                    "Application PAN" to "XXXX XXXX XXXX 1234",
+                    "Track2 Equivalent Data" to "XXXX...XXXX",
                     "Expiration Date" to "02/25",
                     "Application Preferred Name" to "MasterCard",
                     "Service Code" to "201",
@@ -110,10 +238,16 @@ class NFCReaderViewModel @Inject constructor(
                 terminalCountryCode = "USA",
                 interfaceDeviceSerialNumber = "12345678"
             )
-            _nfcTagData.value = mockData.parsedTlvData
-            _rawResponse.value = mockData.rawResponse
-            _additionalInfo.value = mockData
-            _error.value = null // Clear errors
+
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                nfcTagData = mockData.parsedTlvData,
+                rawResponse = mockData.rawResponse,
+                additionalInfo = mockData,
+                error = null,
+                errorMessage = null,
+                lastScanSaved = false
+            )
         }
     }
 }
