@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "io.github.romantsisyk.nfccardreader"
-        minSdk = 33
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -20,11 +20,17 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Room schema export
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -71,7 +77,7 @@ android {
 dependencies {
     // Add this for record desugaring
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
-    
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)  // Changed from implementation to ksp
 
@@ -83,9 +89,18 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    
+
     // Adding Material Icons Extended for additional icons
     implementation(libs.androidx.material.icons.extended)
+
+    // Room database
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
+    // Navigation Compose
+    implementation(libs.navigation.compose)
+    implementation(libs.hilt.navigation.compose)
     
     // Base testing dependencies
     testImplementation(libs.junit)

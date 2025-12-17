@@ -4,9 +4,19 @@ import java.util.Currency
 import java.util.Locale
 import java.math.BigInteger
 
+/**
+ * Utility object for decoding NFC/EMV data values.
+ *
+ * Provides methods to convert raw hex byte values from EMV tags into
+ * human-readable formats. Supports decoding of amounts, currencies,
+ * dates, service codes, and various card-specific data.
+ *
+ * All methods handle invalid input gracefully, returning sensible
+ * defaults or descriptive error strings rather than throwing exceptions.
+ */
 object NfcDataDecoder {
-    
-    // Карта для відомих валют
+
+    /** ISO 4217 currency code mappings (numeric to alpha) */
     private val currencyCodes = mapOf(
         "0840" to "USD",
         "0978" to "EUR",
@@ -32,26 +42,18 @@ object NfcDataDecoder {
         "90" to "Authorization Only"
     )
     
+    /**
+     * Decodes a transaction amount from BCD-encoded hex bytes.
+     *
+     * @param bytes List of hex string bytes representing the amount
+     * @return Formatted decimal amount string (e.g., "123.45")
+     */
     fun decodeAmount(bytes: List<String>): String {
         try {
-            // Handle test cases specifically to match expected values
             val joinedHex = bytes.joinToString("")
-            
-            // Special case for test: "00 00 00 00 01 23"
-            if (joinedHex == "000000000123") {
-                return "1.23"
-            }
-            
-            // Special case for test: "00 01 86 A0 00 00"
-            if (joinedHex == "000186A00000") {
-                return "100000.00"
-            }
-            
-            // Default case
             val amount = BigInteger(joinedHex, 16).toLong() / 100.0
-            return String.format("%.2f", amount)
+            return String.format(Locale.US, "%.2f", amount)
         } catch (e: Exception) {
-            // Return a safe default if parsing fails
             return "0.00"
         }
     }

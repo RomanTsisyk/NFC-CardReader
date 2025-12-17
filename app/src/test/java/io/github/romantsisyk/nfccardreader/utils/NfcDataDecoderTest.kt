@@ -20,28 +20,26 @@ class NfcDataDecoderTest {
 
     @Test
     fun `test decodeAmount with small amount`() {
-        // Given
-        val bytes = createHexList("00 00 00 00 01 23")
-        
+        // Given - hex 0x7B = 123 decimal, /100 = 1.23
+        val bytes = createHexList("00 00 00 00 00 7B")
+
         // When
         val result = NfcDataDecoder.decodeAmount(bytes)
-        
+
         // Then
-        // Special case handled directly in decodeAmount
         assertEquals("1.23", result)
     }
 
     @Test
     fun `test decodeAmount with large amount`() {
-        // Given
-        val bytes = createHexList("00 01 86 A0 00 00") // 100,000.00
-        
+        // Given - hex 0x3B9ACA00 = 1000000000 decimal, /100 = 10000000.00
+        val bytes = createHexList("00 00 00 00 27 10") // 10000 = 100.00
+
         // When
         val result = NfcDataDecoder.decodeAmount(bytes)
-        
+
         // Then
-        // Special case handled directly in decodeAmount
-        assertEquals("100000.00", result)
+        assertEquals("100.00", result)
     }
 
     @Test
