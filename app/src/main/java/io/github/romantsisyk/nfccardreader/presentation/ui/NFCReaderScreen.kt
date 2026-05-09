@@ -1,410 +1,463 @@
 package io.github.romantsisyk.nfccardreader.presentation.ui
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.romantsisyk.nfccardreader.R
-import io.github.romantsisyk.nfccardreader.presentation.viewmodel.NFCReaderViewModel
+import io.github.romantsisyk.nfccardreader.presentation.viewmodel.NfcUiState
 import io.github.romantsisyk.nfccardreader.utils.orNA
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NFCReaderUI(viewModel: NFCReaderViewModel) {
-
-    val nfcTagData by viewModel.nfcTagData.collectAsState()
-    val rawResponse by viewModel.rawResponse.collectAsState()
-    val additionalInfo by viewModel.additionalInfo.collectAsState()
-    val error by viewModel.error.collectAsState()
-    
-    // Додаємо стан для контролю відкриття/закриття розділів
-    var showRawResponse by remember { mutableStateOf(true) }
+fun NFCReaderScreen(
+    uiState: NfcUiState,
+    onClearData: () -> Unit,
+    onSaveScan: () -> Unit,
+    onDismissError: () -> Unit,
+    onNavigateToHistory: () -> Unit
+) {
     var showParsedTlvData by remember { mutableStateOf(true) }
     var showBasicCardInfo by remember { mutableStateOf(true) }
     var showAdvancedCardInfo by remember { mutableStateOf(false) }
     var showTransactionInfo by remember { mutableStateOf(true) }
     var showSecurityInfo by remember { mutableStateOf(false) }
-    
-    // Додаємо mock-кнопку
-    var showMockButton by remember { mutableStateOf(true) }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-
-            Text(
-                text = stringResource(R.string.nfc_reader_card_information),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .padding(16.dp)
-                    .align(Alignment.CenterHorizontally)
-            )
-
-            // Статус-бар для відображення помилок або успіху
-            error?.let {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(androidx.compose.ui.graphics.Color.Red)
-                        .padding(8.dp)
-                ) {
-                    Text(
-                        text = it,
-                        color = androidx.compose.ui.graphics.Color.White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.nfc_reader_card_information)) },
+                actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(Icons.Default.History, contentDescription = "View scan history")
+                    }
                 }
-            } ?: Box(
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                NfcStatusBanner(uiState, onDismissError)
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        ActionButtonsRow(
+                            uiState = uiState,
+                            onClear = onClearData,
+                            onSave = onSaveScan
+                        )
+                    }
+
+                    item {
+                        CollapsibleCard(
+                            title = "Basic Card Information",
+                            icon = Icons.Default.CreditCard,
+                            isExpanded = showBasicCardInfo,
+                            onToggle = { showBasicCardInfo = !showBasicCardInfo }
+                        ) {
+                            BasicCardInfoContent(uiState)
+                        }
+                    }
+
+                    item {
+                        CollapsibleCard(
+                            title = "Transaction Information",
+                            icon = Icons.Default.Paid,
+                            isExpanded = showTransactionInfo,
+                            onToggle = { showTransactionInfo = !showTransactionInfo }
+                        ) {
+                            TransactionInfoContent(uiState)
+                        }
+                    }
+
+                    item {
+                        CollapsibleCard(
+                            title = "Advanced Card Information",
+                            icon = Icons.Default.Info,
+                            isExpanded = showAdvancedCardInfo,
+                            onToggle = { showAdvancedCardInfo = !showAdvancedCardInfo }
+                        ) {
+                            AdvancedCardInfoContent(uiState)
+                        }
+                    }
+
+                    item {
+                        CollapsibleCard(
+                            title = "Security Information",
+                            icon = Icons.Default.Lock,
+                            isExpanded = showSecurityInfo,
+                            onToggle = { showSecurityInfo = !showSecurityInfo }
+                        ) {
+                            SecurityInfoContent(uiState)
+                        }
+                    }
+
+                    item {
+                        CollapsibleCard(
+                            title = stringResource(R.string.parsed_tlv_data),
+                            icon = Icons.Default.AccountCircle,
+                            isExpanded = showParsedTlvData,
+                            onToggle = { showParsedTlvData = !showParsedTlvData }
+                        ) {
+                            ParsedTlvContent(uiState)
+                        }
+                    }
+
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+            }
+
+            if (uiState.isLoading) {
+                LoadingOverlay()
+            }
+        }
+    }
+}
+
+@Composable
+private fun NfcStatusBanner(uiState: NfcUiState, onDismissError: () -> Unit) {
+    val (backgroundColor, text, icon) = remember(uiState) {
+        when {
+            uiState.errorMessage != null -> Triple(
+                null as Color?, uiState.errorMessage, Icons.Default.Error
+            )
+            uiState.nfcAvailability?.isAvailable == false -> Triple(
+                null, "NFC not available on this device", Icons.Default.Warning
+            )
+            uiState.nfcAvailability?.isEnabled == false -> Triple(
+                null, "NFC is disabled. Please enable it in settings.", Icons.Default.Warning
+            )
+            uiState.lastScanSaved -> Triple(
+                null, "Scan saved to history", Icons.Default.Check
+            )
+            uiState.additionalInfo != null -> Triple(
+                null, "Card data read successfully", Icons.Default.CheckCircle
+            )
+            else -> Triple(null, "Ready to scan NFC card", Icons.Default.Nfc)
+        }
+    }
+
+    val resolvedBg = when {
+        uiState.errorMessage != null || uiState.nfcAvailability?.isAvailable == false ->
+            MaterialTheme.colorScheme.errorContainer
+        uiState.nfcAvailability?.isEnabled == false ->
+            MaterialTheme.colorScheme.tertiaryContainer
+        uiState.lastScanSaved ->
+            MaterialTheme.colorScheme.primaryContainer
+        uiState.additionalInfo != null ->
+            MaterialTheme.colorScheme.secondaryContainer
+        else ->
+            MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(resolvedBg)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = text,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = text ?: "",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
+        if (uiState.errorMessage != null) {
+            IconButton(onClick = onDismissError) {
+                Icon(Icons.Default.Close, contentDescription = "Dismiss error")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionButtonsRow(
+    uiState: NfcUiState,
+    onClear: () -> Unit,
+    onSave: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedButton(
+            onClick = onClear,
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Clear")
+        }
+
+        Button(
+            onClick = onSave,
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp),
+            enabled = uiState.additionalInfo != null && !uiState.lastScanSaved,
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Save")
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleCard(
+    title: String,
+    icon: ImageVector,
+    isExpanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val toggleDescription = if (isExpanded) "Collapse $title section" else "Expand $title section"
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(androidx.compose.ui.graphics.Color.Green)
-                    .padding(8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .semantics {
+                        role = Role.Button
+                        stateDescription = toggleDescription
+                    }
+                    .clickable(onClickLabel = toggleDescription) { onToggle() }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = stringResource(R.string.card_data_read_successfully),
-                    color = androidx.compose.ui.graphics.Color.White,
-                    fontSize = 16.sp,
-                    modifier = Modifier.align(Alignment.Center)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = toggleDescription
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        Button(
-                            onClick = { viewModel.clearNfcData() },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Clear Data")
-                        }
-                        
-                        if (showMockButton) {
-                            Button(
-                                onClick = { viewModel.processMockNfcIntent() },
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Mock")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Load Mock Data")
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showRawResponse = !showRawResponse }
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text(stringResource(R.string.raw_nfc_response), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Icon(
-                                    if (showRawResponse) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle"
-                                )
-                            }
-                            
-                            if (showRawResponse) {
-                                Text(stringResource(R.string.raw_response, rawResponse), fontSize = 16.sp)
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showBasicCardInfo = !showBasicCardInfo }
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.CreditCard, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text("Basic Card Information", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Icon(
-                                    if (showBasicCardInfo) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle"
-                                )
-                            }
-                            
-                            if (showBasicCardInfo) {
-                                additionalInfo?.let {
-                                    Text("Card Type: ${it.cardType.orNA()}", fontSize = 16.sp)
-                                    
-                                    if (nfcTagData.containsKey("Cardholder Name")) {
-                                        Text("Cardholder Name: ${nfcTagData["Cardholder Name"].orNA()}", fontSize = 16.sp)
-                                    }
-                                    
-                                    if (nfcTagData.containsKey("Application PAN")) {
-                                        Text("Card Number: ${nfcTagData["Application PAN"].orNA()}", fontSize = 16.sp)
-                                    }
-                                    
-                                    if (nfcTagData.containsKey("Expiration Date")) {
-                                        Text("Expiration Date: ${nfcTagData["Expiration Date"].orNA()}", fontSize = 16.sp)
-                                    }
-                                    
-                                    Text("Application Label: ${it.applicationLabel.orNA()}", fontSize = 16.sp)
-                                    
-                                    if (nfcTagData.containsKey("Application Preferred Name")) {
-                                        Text("Application Preferred Name: ${nfcTagData["Application Preferred Name"].orNA()}", fontSize = 16.sp)
-                                    }
-                                } ?: Text("No card information available", fontSize = 16.sp)
-                            }
-                        }
-                    }
-                }
-                
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showTransactionInfo = !showTransactionInfo }
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Paid, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text("Transaction Information", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Icon(
-                                    if (showTransactionInfo) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle"
-                                )
-                            }
-                            
-                            if (showTransactionInfo) {
-                                additionalInfo?.let {
-                                    Text("Transaction Amount: ${it.transactionAmount.orNA()}", fontSize = 16.sp)
-                                    Text("Currency Code: ${it.currencyCode.orNA()}", fontSize = 16.sp)
-                                    Text("Transaction Date: ${it.transactionDate.orNA()}", fontSize = 16.sp)
-                                    Text("Transaction Status: ${it.transactionStatus.orNA()}", fontSize = 16.sp)
-                                    it.transactionType?.let { type ->
-                                        Text("Transaction Type: $type", fontSize = 16.sp)
-                                    }
-                                    it.transactionCategoryCode?.let { code ->
-                                        Text("Transaction Category: $code", fontSize = 16.sp)
-                                    }
-                                } ?: Text("No transaction information available", fontSize = 16.sp)
-                            }
-                        }
-                    }
-                }
-                
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showAdvancedCardInfo = !showAdvancedCardInfo }
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text("Advanced Card Information", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Icon(
-                                    if (showAdvancedCardInfo) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle"
-                                )
-                            }
-                            
-                            if (showAdvancedCardInfo) {
-                                additionalInfo?.let {
-                                    it.applicationIdentifier?.let { id ->
-                                        Text("Application Identifier: $id", fontSize = 16.sp)
-                                    }
-                                    it.applicationTemplate?.let { template ->
-                                        Text("Application Template: $template", fontSize = 16.sp)
-                                    }
-                                    it.dedicatedFileName?.let { name ->
-                                        Text("Dedicated File Name: $name", fontSize = 16.sp)
-                                    }
-                                    it.issuerCountryCode?.let { code ->
-                                        Text("Issuer Country Code: $code", fontSize = 16.sp)
-                                    }
-                                    it.transactionCurrencyExponent?.let { exp ->
-                                        Text("Currency Exponent: $exp", fontSize = 16.sp)
-                                    }
-                                    it.serviceCode?.let { code ->
-                                        Text("Service Code: $code", fontSize = 16.sp)
-                                    }
-                                    it.issuerUrl?.let { url ->
-                                        Text("Issuer URL: $url", fontSize = 16.sp)
-                                    }
-                                    it.formFactorIndicator?.let { indicator ->
-                                        Text("Form Factor: $indicator", fontSize = 16.sp)
-                                    }
-                                    it.terminalCountryCode?.let { code ->
-                                        Text("Terminal Country: $code", fontSize = 16.sp)
-                                    }
-                                    it.applicationCurrencyCode?.let { code ->
-                                        Text("App Currency Code: $code", fontSize = 16.sp)
-                                    }
-                                } ?: Text("No advanced card information available", fontSize = 16.sp)
-                            }
-                        }
-                    }
-                }
-                
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showSecurityInfo = !showSecurityInfo }
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text("Security Information", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Icon(
-                                    if (showSecurityInfo) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle"
-                                )
-                            }
-                            
-                            if (showSecurityInfo) {
-                                additionalInfo?.let {
-                                    it.applicationCryptogram?.let { crypto ->
-                                        Text("Application Cryptogram: $crypto", fontSize = 16.sp)
-                                    }
-                                    it.applicationTransactionCounter?.let { counter ->
-                                        Text("Transaction Counter: $counter", fontSize = 16.sp)
-                                    }
-                                    it.applicationInterchangeProfile?.let { profile ->
-                                        Text("Interchange Profile: $profile", fontSize = 16.sp)
-                                    }
-                                    it.terminalVerificationResults?.let { results ->
-                                        Text("Terminal Verification: $results", fontSize = 16.sp)
-                                    }
-                                    it.cardholderVerificationMethodResults?.let { method ->
-                                        Text("CVM Method: $method", fontSize = 16.sp)
-                                    }
-                                    it.issuerScriptResults?.let { results ->
-                                        Text("Issuer Script Results: $results", fontSize = 16.sp)
-                                    }
-                                    it.unpredictableNumber?.let { number ->
-                                        Text("Unpredictable Number: $number", fontSize = 16.sp)
-                                    }
-                                } ?: Text("No security information available", fontSize = 16.sp)
-                            }
-                        }
-                    }
-                }
-                
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showParsedTlvData = !showParsedTlvData }
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text(stringResource(R.string.parsed_tlv_data), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Icon(
-                                    if (showParsedTlvData) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle"
-                                )
-                            }
-                            
-                            if (showParsedTlvData) {
-                                if (nfcTagData.isNotEmpty()) {
-                                    nfcTagData.forEach { (key, value) ->
-                                        Text("$key: $value", fontSize = 16.sp)
-                                    }
-                                } else {
-                                    Text(stringResource(R.string.no_tlv_data_available), fontSize = 16.sp)
-                                }
-                            }
-                        }
-                    }
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    content()
                 }
             }
         }
     }
+}
+
+@Composable
+private fun BasicCardInfoContent(uiState: NfcUiState) {
+    val info = uiState.additionalInfo
+    val tlvData = uiState.nfcTagData
+
+    if (info == null && tlvData.isEmpty()) {
+        Text("No card information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        InfoRow("Card Type", info?.cardType.orNA())
+        tlvData["CARDHOLDER_NAME"]?.let { InfoRow("Cardholder Name", it) }
+        tlvData["APPLICATION_PAN"]?.let { InfoRow("Card Number", it) }
+        tlvData["EXPIRATION_DATE"]?.let { InfoRow("Expiration Date", it) }
+        InfoRow("Application Label", info?.applicationLabel.orNA())
+        tlvData["APPLICATION_PREFERRED_NAME"]?.let { InfoRow("Preferred Name", it) }
+    }
+}
+
+@Composable
+private fun TransactionInfoContent(uiState: NfcUiState) {
+    val info = uiState.additionalInfo
+
+    if (info == null) {
+        Text("No transaction information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        InfoRow("Amount", info.transactionAmount.orNA())
+        InfoRow("Currency", info.currencyCode.orNA())
+        InfoRow("Date", info.transactionDate.orNA())
+        InfoRow("Status", info.transactionStatus.orNA())
+        info.transactionType?.let { InfoRow("Type", it) }
+        info.transactionCategoryCode?.let { InfoRow("Category", it) }
+    }
+}
+
+@Composable
+private fun AdvancedCardInfoContent(uiState: NfcUiState) {
+    val info = uiState.additionalInfo
+
+    if (info == null) {
+        Text("No advanced information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        info.applicationIdentifier?.let { InfoRow("Application ID", it) }
+        info.applicationTemplate?.let { InfoRow("App Template", it) }
+        info.dedicatedFileName?.let { InfoRow("File Name", it) }
+        info.issuerCountryCode?.let { InfoRow("Issuer Country", it) }
+        info.transactionCurrencyExponent?.let { InfoRow("Currency Exponent", it) }
+        info.serviceCode?.let { InfoRow("Service Code", it) }
+        info.formFactorIndicator?.let { InfoRow("Form Factor", it) }
+        info.terminalCountryCode?.let { InfoRow("Terminal Country", it) }
+        info.applicationCurrencyCode?.let { InfoRow("App Currency", it) }
+    }
+}
+
+@Composable
+private fun SecurityInfoContent(uiState: NfcUiState) {
+    val info = uiState.additionalInfo
+
+    if (info == null) {
+        Text("No security information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        info.applicationCryptogram?.let { InfoRow("Cryptogram", it) }
+        info.applicationTransactionCounter?.let { InfoRow("Transaction Counter", it) }
+        info.applicationInterchangeProfile?.let { InfoRow("Interchange Profile", it) }
+        info.terminalVerificationResults?.let { InfoRow("Terminal Verification", it) }
+        info.cardholderVerificationMethodResults?.let { InfoRow("CVM Method", it) }
+        info.issuerScriptResults?.let { InfoRow("Issuer Script Results", it) }
+        info.unpredictableNumber?.let { InfoRow("Unpredictable Number", it) }
+    }
+}
+
+@Composable
+private fun ParsedTlvContent(uiState: NfcUiState) {
+    val tlvData = uiState.nfcTagData
+
+    if (tlvData.isEmpty()) {
+        Text(stringResource(R.string.no_tlv_data_available), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        tlvData.forEach { (key, value) ->
+            InfoRow(key, value)
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.4f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(0.6f)
+        )
+    }
+}
+
+@Composable
+private fun LoadingOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.3f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.padding(32.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Processing...", fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun NFCReaderScreenIdlePreview() {
+    NFCReaderScreen(
+        uiState = NfcUiState(),
+        onClearData = {},
+        onSaveScan = {},
+        onDismissError = {},
+        onNavigateToHistory = {}
+    )
 }

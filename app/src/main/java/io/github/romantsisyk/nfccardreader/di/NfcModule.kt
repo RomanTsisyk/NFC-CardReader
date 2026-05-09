@@ -1,32 +1,40 @@
 package io.github.romantsisyk.nfccardreader.di
 
+import android.content.Context
+import androidx.room.Room
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import io.github.romantsisyk.nfccardreader.domain.usecase.InterpretNfcDataUseCase
-import io.github.romantsisyk.nfccardreader.domain.usecase.ParseTLVUseCase
-import io.github.romantsisyk.nfccardreader.domain.usecase.ProcessNfcIntentUseCase
+import io.github.romantsisyk.nfccardreader.data.local.NfcDatabase
+import io.github.romantsisyk.nfccardreader.data.local.dao.ScanDao
+import io.github.romantsisyk.nfccardreader.data.repository.NfcRepositoryImpl
+import io.github.romantsisyk.nfccardreader.domain.repository.NfcRepository
+import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object NfcModule {
 
     @Provides
-    fun provideInterpretNfcDataUseCase(): InterpretNfcDataUseCase {
-        return InterpretNfcDataUseCase()
-    }
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): NfcDatabase =
+        Room.databaseBuilder(context, NfcDatabase::class.java, NfcDatabase.DATABASE_NAME)
+            .addMigrations(NfcDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
-    fun provideParseTLVUseCase(): ParseTLVUseCase {
-        return ParseTLVUseCase()
-    }
+    @Singleton
+    fun provideScanDao(database: NfcDatabase): ScanDao = database.scanDao()
+}
 
-    @Provides
-    fun provideProcessNfcIntentUseCase(
-        parseTLVUseCase: ParseTLVUseCase,
-        interpretNfcDataUseCase: InterpretNfcDataUseCase
-    ): ProcessNfcIntentUseCase {
-        return ProcessNfcIntentUseCase(parseTLVUseCase, interpretNfcDataUseCase)
-    }
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class RepositoryModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindNfcRepository(impl: NfcRepositoryImpl): NfcRepository
 }
