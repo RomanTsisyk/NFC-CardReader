@@ -33,13 +33,31 @@
 # ============================================
 # Room Database
 # ============================================
--keep class * extends androidx.room.RoomDatabase
--keep @androidx.room.Entity class *
+-keep class * extends androidx.room.RoomDatabase { *; }
+-keep @androidx.room.Entity class * { *; }
 -dontwarn androidx.room.paging.**
+
+# Keep Room-generated _Impl classes — R8 will strip these without explicit keep rules
+# because they are referenced only by reflection at runtime.
+-keep class **_Impl { *; }
+-keep class **_Impl$* { *; }
+
+# Keep DAO interfaces and their implementations
+-keep @androidx.room.Dao interface * { *; }
+-keep @androidx.room.Dao class * { *; }
+
+# Keep TypeConverter methods so Room can call them via reflection
+-keepclassmembers class * {
+    @androidx.room.TypeConverter <methods>;
+}
+
+# Keep Room migration classes
+-keep class * extends androidx.room.migration.Migration { *; }
 
 # Keep Room entity fields
 -keepclassmembers class io.github.romantsisyk.nfccardreader.data.local.entity.** {
     <fields>;
+    <init>(...);
 }
 
 # ============================================
@@ -101,6 +119,9 @@
     public static int v(...);
     public static int d(...);
     public static int i(...);
+    public static int w(...);
+    public static int e(...);
+    public static int wtf(...);
 }
 
 # ============================================

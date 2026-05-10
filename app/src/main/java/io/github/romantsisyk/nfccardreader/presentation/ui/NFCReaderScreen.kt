@@ -16,30 +16,27 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.romantsisyk.nfccardreader.R
-import io.github.romantsisyk.nfccardreader.presentation.viewmodel.NFCReaderViewModel
 import io.github.romantsisyk.nfccardreader.presentation.viewmodel.NfcUiState
 import io.github.romantsisyk.nfccardreader.utils.orNA
 
-/**
- * Main NFC Reader screen composable.
- *
- * @param viewModel The ViewModel containing NFC data and state
- * @param onNavigateToHistory Callback for navigating to history screen
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NFCReaderScreen(
-    viewModel: NFCReaderViewModel,
-    onNavigateToHistory: () -> Unit = {}
+    uiState: NfcUiState,
+    onClearData: () -> Unit,
+    onSaveScan: () -> Unit,
+    onDismissError: () -> Unit,
+    onNavigateToHistory: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-
-    // Section visibility states
-    var showRawResponse by remember { mutableStateOf(true) }
     var showParsedTlvData by remember { mutableStateOf(true) }
     var showBasicCardInfo by remember { mutableStateOf(true) }
     var showAdvancedCardInfo by remember { mutableStateOf(false) }
@@ -52,7 +49,7 @@ fun NFCReaderScreen(
                 title = { Text(stringResource(R.string.nfc_reader_card_information)) },
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Default.History, contentDescription = "History")
+                        Icon(Icons.Default.History, contentDescription = "View scan history")
                     }
                 }
             )
@@ -64,8 +61,7 @@ fun NFCReaderScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                // NFC Status Banner
-                NfcStatusBanner(uiState)
+                NfcStatusBanner(uiState, onDismissError)
 
                 LazyColumn(
                     modifier = Modifier
@@ -73,33 +69,14 @@ fun NFCReaderScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Action Buttons
                     item {
                         ActionButtonsRow(
                             uiState = uiState,
-                            onClear = { viewModel.clearNfcData() },
-                            onLoadMock = { viewModel.processMockNfcIntent() },
-                            onSave = { viewModel.saveCurrentScan() }
+                            onClear = onClearData,
+                            onSave = onSaveScan
                         )
                     }
 
-                    // Raw NFC Response
-                    item {
-                        CollapsibleCard(
-                            title = stringResource(R.string.raw_nfc_response),
-                            icon = Icons.Default.Terminal,
-                            isExpanded = showRawResponse,
-                            onToggle = { showRawResponse = !showRawResponse }
-                        ) {
-                            Text(
-                                text = stringResource(R.string.raw_response, uiState.rawResponse),
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-                    }
-
-                    // Basic Card Information
                     item {
                         CollapsibleCard(
                             title = "Basic Card Information",
@@ -111,7 +88,6 @@ fun NFCReaderScreen(
                         }
                     }
 
-                    // Transaction Information
                     item {
                         CollapsibleCard(
                             title = "Transaction Information",
@@ -123,7 +99,6 @@ fun NFCReaderScreen(
                         }
                     }
 
-                    // Advanced Card Information
                     item {
                         CollapsibleCard(
                             title = "Advanced Card Information",
@@ -135,7 +110,6 @@ fun NFCReaderScreen(
                         }
                     }
 
-                    // Security Information
                     item {
                         CollapsibleCard(
                             title = "Security Information",
@@ -147,7 +121,6 @@ fun NFCReaderScreen(
                         }
                     }
 
-                    // Parsed TLV Data
                     item {
                         CollapsibleCard(
                             title = stringResource(R.string.parsed_tlv_data),
@@ -163,7 +136,6 @@ fun NFCReaderScreen(
                 }
             }
 
-            // Loading Overlay
             if (uiState.isLoading) {
                 LoadingOverlay()
             }
@@ -171,78 +143,74 @@ fun NFCReaderScreen(
     }
 }
 
-/**
- * NFC status banner showing current state.
- */
 @Composable
-private fun NfcStatusBanner(uiState: NfcUiState) {
-    val backgroundColor: Color
-    val text: String
-    val icon: ImageVector
+private fun NfcStatusBanner(uiState: NfcUiState, onDismissError: () -> Unit) {
+    val (backgroundColor, text, icon) = remember(uiState) {
+        when {
+            uiState.errorMessage != null -> Triple(
+                null as Color?, uiState.errorMessage, Icons.Default.Error
+            )
+            uiState.nfcAvailability?.isAvailable == false -> Triple(
+                null, "NFC not available on this device", Icons.Default.Warning
+            )
+            uiState.nfcAvailability?.isEnabled == false -> Triple(
+                null, "NFC is disabled. Please enable it in settings.", Icons.Default.Warning
+            )
+            uiState.lastScanSaved -> Triple(
+                null, "Scan saved to history", Icons.Default.Check
+            )
+            uiState.additionalInfo != null -> Triple(
+                null, "Card data read successfully", Icons.Default.CheckCircle
+            )
+            else -> Triple(null, "Ready to scan NFC card", Icons.Default.Nfc)
+        }
+    }
 
-    when {
-        uiState.errorMessage != null -> {
-            backgroundColor = MaterialTheme.colorScheme.errorContainer
-            text = uiState.errorMessage
-            icon = Icons.Default.Error
-        }
-        uiState.nfcAvailability?.isAvailable == false -> {
-            backgroundColor = MaterialTheme.colorScheme.errorContainer
-            text = "NFC not available on this device"
-            icon = Icons.Default.Warning
-        }
-        uiState.nfcAvailability?.isEnabled == false -> {
-            backgroundColor = Color(0xFFFFF3E0)
-            text = "NFC is disabled. Please enable it in settings."
-            icon = Icons.Default.Warning
-        }
-        uiState.lastScanSaved -> {
-            backgroundColor = MaterialTheme.colorScheme.primaryContainer
-            text = "Scan saved to history"
-            icon = Icons.Default.Check
-        }
-        uiState.additionalInfo != null -> {
-            backgroundColor = Color(0xFFE8F5E9)
-            text = "Card data read successfully"
-            icon = Icons.Default.CheckCircle
-        }
-        else -> {
-            backgroundColor = MaterialTheme.colorScheme.surfaceVariant
-            text = "Ready to scan NFC card"
-            icon = Icons.Default.Nfc
-        }
+    val resolvedBg = when {
+        uiState.errorMessage != null || uiState.nfcAvailability?.isAvailable == false ->
+            MaterialTheme.colorScheme.errorContainer
+        uiState.nfcAvailability?.isEnabled == false ->
+            MaterialTheme.colorScheme.tertiaryContainer
+        uiState.lastScanSaved ->
+            MaterialTheme.colorScheme.primaryContainer
+        uiState.additionalInfo != null ->
+            MaterialTheme.colorScheme.secondaryContainer
+        else ->
+            MaterialTheme.colorScheme.surfaceVariant
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(backgroundColor)
+            .background(resolvedBg)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = text,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = text,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
+            text = text ?: "",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
         )
+        if (uiState.errorMessage != null) {
+            IconButton(onClick = onDismissError) {
+                Icon(Icons.Default.Close, contentDescription = "Dismiss error")
+            }
+        }
     }
 }
 
-/**
- * Row of action buttons.
- */
 @Composable
 private fun ActionButtonsRow(
     uiState: NfcUiState,
     onClear: () -> Unit,
-    onLoadMock: () -> Unit,
     onSave: () -> Unit
 ) {
     Row(
@@ -253,7 +221,9 @@ private fun ActionButtonsRow(
     ) {
         OutlinedButton(
             onClick = onClear,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp),
             shape = RoundedCornerShape(8.dp)
         ) {
             Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -261,19 +231,11 @@ private fun ActionButtonsRow(
             Text("Clear")
         }
 
-        OutlinedButton(
-            onClick = onLoadMock,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("Mock")
-        }
-
         Button(
             onClick = onSave,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp),
             enabled = uiState.additionalInfo != null && !uiState.lastScanSaved,
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -284,9 +246,6 @@ private fun ActionButtonsRow(
     }
 }
 
-/**
- * Collapsible card component.
- */
 @Composable
 private fun CollapsibleCard(
     title: String,
@@ -295,6 +254,8 @@ private fun CollapsibleCard(
     onToggle: () -> Unit,
     content: @Composable () -> Unit
 ) {
+    val toggleDescription = if (isExpanded) "Collapse $title section" else "Expand $title section"
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -307,7 +268,11 @@ private fun CollapsibleCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { onToggle() }
+                    .semantics {
+                        role = Role.Button
+                        stateDescription = toggleDescription
+                    }
+                    .clickable(onClickLabel = toggleDescription) { onToggle() }
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -320,13 +285,13 @@ private fun CollapsibleCard(
                     )
                     Text(
                         text = title,
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Toggle"
+                    contentDescription = toggleDescription
                 )
             }
 
@@ -343,38 +308,32 @@ private fun CollapsibleCard(
     }
 }
 
-/**
- * Basic card information content.
- */
 @Composable
 private fun BasicCardInfoContent(uiState: NfcUiState) {
     val info = uiState.additionalInfo
     val tlvData = uiState.nfcTagData
 
     if (info == null && tlvData.isEmpty()) {
-        Text("No card information available", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+        Text("No card information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
         return
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         InfoRow("Card Type", info?.cardType.orNA())
-        tlvData["Cardholder Name"]?.let { InfoRow("Cardholder Name", it) }
-        tlvData["Application PAN"]?.let { InfoRow("Card Number", it) }
-        tlvData["Expiration Date"]?.let { InfoRow("Expiration Date", it) }
+        tlvData["CARDHOLDER_NAME"]?.let { InfoRow("Cardholder Name", it) }
+        tlvData["APPLICATION_PAN"]?.let { InfoRow("Card Number", it) }
+        tlvData["EXPIRATION_DATE"]?.let { InfoRow("Expiration Date", it) }
         InfoRow("Application Label", info?.applicationLabel.orNA())
-        tlvData["Application Preferred Name"]?.let { InfoRow("Preferred Name", it) }
+        tlvData["APPLICATION_PREFERRED_NAME"]?.let { InfoRow("Preferred Name", it) }
     }
 }
 
-/**
- * Transaction information content.
- */
 @Composable
 private fun TransactionInfoContent(uiState: NfcUiState) {
     val info = uiState.additionalInfo
 
     if (info == null) {
-        Text("No transaction information available", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+        Text("No transaction information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
         return
     }
 
@@ -388,15 +347,12 @@ private fun TransactionInfoContent(uiState: NfcUiState) {
     }
 }
 
-/**
- * Advanced card information content.
- */
 @Composable
 private fun AdvancedCardInfoContent(uiState: NfcUiState) {
     val info = uiState.additionalInfo
 
     if (info == null) {
-        Text("No advanced information available", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+        Text("No advanced information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
         return
     }
 
@@ -407,22 +363,18 @@ private fun AdvancedCardInfoContent(uiState: NfcUiState) {
         info.issuerCountryCode?.let { InfoRow("Issuer Country", it) }
         info.transactionCurrencyExponent?.let { InfoRow("Currency Exponent", it) }
         info.serviceCode?.let { InfoRow("Service Code", it) }
-        info.issuerUrl?.let { InfoRow("Issuer URL", it) }
         info.formFactorIndicator?.let { InfoRow("Form Factor", it) }
         info.terminalCountryCode?.let { InfoRow("Terminal Country", it) }
         info.applicationCurrencyCode?.let { InfoRow("App Currency", it) }
     }
 }
 
-/**
- * Security information content.
- */
 @Composable
 private fun SecurityInfoContent(uiState: NfcUiState) {
     val info = uiState.additionalInfo
 
     if (info == null) {
-        Text("No security information available", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+        Text("No security information available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
         return
     }
 
@@ -437,15 +389,12 @@ private fun SecurityInfoContent(uiState: NfcUiState) {
     }
 }
 
-/**
- * Parsed TLV data content.
- */
 @Composable
 private fun ParsedTlvContent(uiState: NfcUiState) {
     val tlvData = uiState.nfcTagData
 
     if (tlvData.isEmpty()) {
-        Text(stringResource(R.string.no_tlv_data_available), fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+        Text(stringResource(R.string.no_tlv_data_available), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
         return
     }
 
@@ -456,9 +405,6 @@ private fun ParsedTlvContent(uiState: NfcUiState) {
     }
 }
 
-/**
- * Single row of information with label and value.
- */
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(
@@ -467,22 +413,19 @@ private fun InfoRow(label: String, value: String) {
     ) {
         Text(
             text = "$label:",
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.4f)
         )
         Text(
             text = value,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(0.6f)
         )
     }
 }
 
-/**
- * Loading overlay with progress indicator.
- */
 @Composable
 private fun LoadingOverlay() {
     Box(
@@ -507,8 +450,14 @@ private fun LoadingOverlay() {
     }
 }
 
-// Legacy composable for backward compatibility
+@Preview(showBackground = true)
 @Composable
-fun NFCReaderUI(viewModel: NFCReaderViewModel) {
-    NFCReaderScreen(viewModel = viewModel)
+private fun NFCReaderScreenIdlePreview() {
+    NFCReaderScreen(
+        uiState = NfcUiState(),
+        onClearData = {},
+        onSaveScan = {},
+        onDismissError = {},
+        onNavigateToHistory = {}
+    )
 }
