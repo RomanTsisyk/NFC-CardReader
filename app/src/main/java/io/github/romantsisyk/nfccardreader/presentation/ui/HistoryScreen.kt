@@ -14,24 +14,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.romantsisyk.nfccardreader.domain.model.NFCData
-import io.github.romantsisyk.nfccardreader.presentation.viewmodel.NFCReaderViewModel
 import io.github.romantsisyk.nfccardreader.utils.orNA
 
-/**
- * Screen displaying scan history.
- *
- * @param viewModel The ViewModel containing scan history data
- * @param onNavigateBack Callback for navigation back action
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    viewModel: NFCReaderViewModel,
+    history: List<NFCData>,
+    onDelete: (Long) -> Unit,
+    onClearAll: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
-    val history by viewModel.scanHistory.collectAsState()
     var showClearDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -51,7 +46,7 @@ fun HistoryScreen(
                         IconButton(onClick = { showClearDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "Clear All"
+                                contentDescription = "Clear all scan history"
                             )
                         }
                     }
@@ -97,10 +92,10 @@ fun HistoryScreen(
             ) {
                 item { Spacer(modifier = Modifier.height(8.dp)) }
 
-                items(history) { scan ->
+                items(history, key = { it.dbId }) { scan ->
                     HistoryItem(
                         scan = scan,
-                        onDelete = { /* TODO: Add delete by ID */ }
+                        onDelete = { onDelete(scan.dbId) }
                     )
                 }
 
@@ -117,7 +112,7 @@ fun HistoryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.clearHistory()
+                        onClearAll()
                         showClearDialog = false
                     }
                 ) {
@@ -133,12 +128,6 @@ fun HistoryScreen(
     }
 }
 
-/**
- * Individual history item card.
- *
- * @param scan The NFC data for this history item
- * @param onDelete Callback for delete action
- */
 @Composable
 private fun HistoryItem(
     scan: NFCData,
@@ -180,7 +169,7 @@ private fun HistoryItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                scan.parsedTlvData["Application PAN"]?.let { pan ->
+                scan.parsedTlvData["APPLICATION_PAN"]?.let { pan ->
                     Text(
                         text = pan,
                         style = MaterialTheme.typography.bodySmall,
@@ -199,13 +188,41 @@ private fun HistoryItem(
                 }
             }
 
-            IconButton(onClick = onDelete) {
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = "Delete scan for ${scan.cardType.orNA()}",
                     tint = MaterialTheme.colorScheme.error
                 )
             }
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun HistoryItemPreview() {
+    HistoryItem(
+        scan = NFCData(
+            dbId = 1,
+            cardType = "MasterCard Credit",
+            applicationLabel = "MasterCard",
+            transactionDate = "20.04.2023"
+        ),
+        onDelete = {}
+    )
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun HistoryScreenEmptyPreview() {
+    HistoryScreen(
+        history = emptyList(),
+        onDelete = {},
+        onClearAll = {},
+        onNavigateBack = {}
+    )
 }
