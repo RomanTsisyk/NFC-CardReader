@@ -20,14 +20,6 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Implementation of [NfcRepository] that handles NFC operations
- * and local database storage.
- *
- * @property context Application context for NFC adapter access
- * @property processNfcIntentUseCase Use case for processing NFC intents
- * @property scanDao DAO for scan history database operations
- */
 @Singleton
 class NfcRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -38,32 +30,17 @@ class NfcRepositoryImpl @Inject constructor(
     override suspend fun processNfcIntent(intent: Intent): NfcResult<NFCData> {
         return withContext(Dispatchers.IO) {
             try {
-                val nfcData = processNfcIntentUseCase.execute(intent)
-                NfcResult.Success(nfcData)
+                NfcResult.Success(processNfcIntentUseCase.execute(intent))
             } catch (e: IllegalArgumentException) {
-                NfcResult.Error(
-                    error = NfcError.TAG_NOT_FOUND,
-                    message = e.message ?: "No NFC tag found",
-                    exception = e
-                )
+                // PCI-DSS: do not propagate raw exception — its message/toString may contain
+                // unmasked TLV bytes, PAN, or track data parsed from the card.
+                NfcResult.Error(NfcError.TAG_NOT_FOUND, "No NFC tag found (${e.javaClass.simpleName})")
             } catch (e: UnsupportedOperationException) {
-                NfcResult.Error(
-                    error = NfcError.UNSUPPORTED_TAG,
-                    message = e.message ?: "Unsupported NFC tag type",
-                    exception = e
-                )
+                NfcResult.Error(NfcError.UNSUPPORTED_TAG, "Unsupported NFC tag type (${e.javaClass.simpleName})")
             } catch (e: IllegalStateException) {
-                NfcResult.Error(
-                    error = NfcError.INITIALIZATION_ERROR,
-                    message = e.message ?: "Initialization error",
-                    exception = e
-                )
+                NfcResult.Error(NfcError.INITIALIZATION_ERROR, "Initialization error (${e.javaClass.simpleName})")
             } catch (e: Exception) {
-                NfcResult.Error(
-                    error = NfcError.COMMUNICATION_ERROR,
-                    message = e.message ?: "Communication error with NFC tag",
-                    exception = e
-                )
+                NfcResult.Error(NfcError.COMMUNICATION_ERROR, "Communication error with NFC tag (${e.javaClass.simpleName})")
             }
         }
     }
@@ -71,19 +48,12 @@ class NfcRepositoryImpl @Inject constructor(
     override suspend fun saveScanRecord(nfcData: NFCData): NfcResult<Long> {
         return withContext(Dispatchers.IO) {
             try {
-                val jsonObject = JSONObject()
-                nfcData.parsedTlvData.forEach { (key, value) ->
-                    jsonObject.put(key, value)
-                }
-                val entity = ScanEntity.fromNFCData(nfcData, jsonObject.toString())
-                val id = scanDao.insert(entity)
-                NfcResult.Success(id)
+                val json = serializeTlvMap(nfcData.parsedTlvData)
+                val entity = ScanEntity.fromNFCData(nfcData, json)
+                NfcResult.Success(scanDao.insert(entity))
             } catch (e: Exception) {
-                NfcResult.Error(
-                    error = NfcError.UNKNOWN_ERROR,
-                    message = "Failed to save scan record: ${e.message}",
-                    exception = e
-                )
+                // Scrub: a Room/SQLite exception message may include the offending row values.
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to save scan record (${e.javaClass.simpleName})")
             }
         }
     }
@@ -91,17 +61,7 @@ class NfcRepositoryImpl @Inject constructor(
     override fun getScanHistory(): Flow<List<NFCData>> {
         return scanDao.getAllScans().map { entities ->
             entities.map { entity ->
-                val parsedTlvData = try {
-                    val jsonObject = JSONObject(entity.parsedTlvDataJson)
-                    val map = mutableMapOf<String, String>()
-                    jsonObject.keys().forEach { key ->
-                        map[key] = jsonObject.getString(key)
-                    }
-                    map
-                } catch (e: Exception) {
-                    emptyMap()
-                }
-                entity.toNFCData(parsedTlvData)
+                entity.toNFCData(deserializeTlvMap(entity.parsedTlvDataJson))
             }
         }
     }
@@ -111,29 +71,12 @@ class NfcRepositoryImpl @Inject constructor(
             try {
                 val entity = scanDao.getScanById(id)
                 if (entity != null) {
-                    val parsedTlvData = try {
-                        val jsonObject = JSONObject(entity.parsedTlvDataJson)
-                        val map = mutableMapOf<String, String>()
-                        jsonObject.keys().forEach { key ->
-                            map[key] = jsonObject.getString(key)
-                        }
-                        map
-                    } catch (e: Exception) {
-                        emptyMap()
-                    }
-                    NfcResult.Success(entity.toNFCData(parsedTlvData))
+                    NfcResult.Success(entity.toNFCData(deserializeTlvMap(entity.parsedTlvDataJson)))
                 } else {
-                    NfcResult.Error(
-                        error = NfcError.INVALID_DATA,
-                        message = "Scan record not found"
-                    )
+                    NfcResult.Error(NfcError.INVALID_DATA, "Scan record not found")
                 }
             } catch (e: Exception) {
-                NfcResult.Error(
-                    error = NfcError.UNKNOWN_ERROR,
-                    message = "Failed to retrieve scan record: ${e.message}",
-                    exception = e
-                )
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to retrieve scan record (${e.javaClass.simpleName})")
             }
         }
     }
@@ -144,11 +87,7 @@ class NfcRepositoryImpl @Inject constructor(
                 scanDao.deleteById(id)
                 NfcResult.Success(Unit)
             } catch (e: Exception) {
-                NfcResult.Error(
-                    error = NfcError.UNKNOWN_ERROR,
-                    message = "Failed to delete scan record: ${e.message}",
-                    exception = e
-                )
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to delete scan record (${e.javaClass.simpleName})")
             }
         }
     }
@@ -159,34 +98,61 @@ class NfcRepositoryImpl @Inject constructor(
                 scanDao.deleteAll()
                 NfcResult.Success(Unit)
             } catch (e: Exception) {
-                NfcResult.Error(
-                    error = NfcError.UNKNOWN_ERROR,
-                    message = "Failed to clear history: ${e.message}",
-                    exception = e
-                )
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to clear history (${e.javaClass.simpleName})")
             }
         }
     }
 
     override fun checkNfcAvailability(): NfcResult<NfcAvailability> {
         return try {
-            val nfcAdapter = NfcAdapter.getDefaultAdapter(context)
-            if (nfcAdapter == null) {
-                NfcResult.Success(NfcAvailability(isAvailable = false, isEnabled = false))
-            } else {
-                NfcResult.Success(
-                    NfcAvailability(
-                        isAvailable = true,
-                        isEnabled = nfcAdapter.isEnabled
-                    )
+            val adapter = context.getSystemService(NfcAdapter::class.java)
+            NfcResult.Success(
+                NfcAvailability(
+                    isAvailable = adapter != null,
+                    isEnabled = adapter?.isEnabled == true
                 )
-            }
-        } catch (e: Exception) {
-            NfcResult.Error(
-                error = NfcError.UNKNOWN_ERROR,
-                message = "Failed to check NFC availability: ${e.message}",
-                exception = e
             )
+        } catch (e: Exception) {
+            NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to check NFC availability (${e.javaClass.simpleName})")
+        }
+    }
+
+    private fun serializeTlvMap(map: Map<String, String>): String {
+        val obj = JSONObject()
+        map.filterKeys { it !in SENSITIVE_TAGS }.forEach { (k, v) -> obj.put(k, v) }
+        return obj.toString()
+    }
+
+    companion object {
+        // Never persist these tags — they contain sensitive card data per PCI-DSS.
+        // Keys must match EmvTag.name values (or "Tag XXXX" fallback keys from ParseTLVUseCase).
+        private val SENSITIVE_TAGS = setOf(
+            // Cardholder identity
+            "CARDHOLDER_NAME",
+            // Card authentication data
+            "EXPIRATION_DATE",
+            "TRACK2_EQUIVALENT_DATA",
+            // PAN sequence (tag 5F34 — parser emits "Tag 5F34" for unknown tags)
+            "Tag 5F34",
+            // Track 1 discretionary data (tag 9F1F — not in enum, stored as raw tag key)
+            "Tag 9F1F",
+            // Issuer-specific data that may contain raw track data
+            "Tag 56",
+            // DF Name (tag 84) — application identifier that can fingerprint cardholder app selection
+            "Tag 84",
+            // CVM Results (tag 9F34) — cardholder verification method outcome,
+            // may leak whether PIN/signature was used and the result byte
+            "Tag 9F34",
+            "CVM_RESULTS"
+        )
+    }
+
+    private fun deserializeTlvMap(json: String): Map<String, String> {
+        return try {
+            val obj = JSONObject(json)
+            obj.keys().asSequence().associateWith { obj.getString(it) }
+        } catch (e: Exception) {
+            emptyMap()
         }
     }
 }

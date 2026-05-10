@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Base config: HTTPS-only, system CAs only (no user-installed CAs to mitigate
+        MITM via rogue trust anchors). Debug overrides are deliberately omitted
+        so debug builds inherit the same strict policy.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

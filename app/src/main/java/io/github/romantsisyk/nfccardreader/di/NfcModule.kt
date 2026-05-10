@@ -12,78 +12,28 @@ import io.github.romantsisyk.nfccardreader.data.local.NfcDatabase
 import io.github.romantsisyk.nfccardreader.data.local.dao.ScanDao
 import io.github.romantsisyk.nfccardreader.data.repository.NfcRepositoryImpl
 import io.github.romantsisyk.nfccardreader.domain.repository.NfcRepository
-import io.github.romantsisyk.nfccardreader.domain.usecase.InterpretNfcDataUseCase
-import io.github.romantsisyk.nfccardreader.domain.usecase.ParseTLVUseCase
-import io.github.romantsisyk.nfccardreader.domain.usecase.ProcessNfcIntentUseCase
 import javax.inject.Singleton
 
-/**
- * Hilt module providing NFC-related dependencies.
- */
 @Module
 @InstallIn(SingletonComponent::class)
 object NfcModule {
 
-    /**
-     * Provides the Room database instance.
-     */
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): NfcDatabase {
-        return Room.databaseBuilder(
-            context,
-            NfcDatabase::class.java,
-            NfcDatabase.DATABASE_NAME
-        ).build()
-    }
+    fun provideDatabase(@ApplicationContext context: Context): NfcDatabase =
+        Room.databaseBuilder(context, NfcDatabase::class.java, NfcDatabase.DATABASE_NAME)
+            .addMigrations(NfcDatabase.MIGRATION_1_2)
+            .build()
 
-    /**
-     * Provides the ScanDao from the database.
-     */
     @Provides
     @Singleton
-    fun provideScanDao(database: NfcDatabase): ScanDao {
-        return database.scanDao()
-    }
-
-    /**
-     * Provides the InterpretNfcDataUseCase.
-     */
-    @Provides
-    fun provideInterpretNfcDataUseCase(): InterpretNfcDataUseCase {
-        return InterpretNfcDataUseCase()
-    }
-
-    /**
-     * Provides the ParseTLVUseCase.
-     */
-    @Provides
-    fun provideParseTLVUseCase(): ParseTLVUseCase {
-        return ParseTLVUseCase()
-    }
-
-    /**
-     * Provides the ProcessNfcIntentUseCase.
-     */
-    @Provides
-    fun provideProcessNfcIntentUseCase(
-        parseTLVUseCase: ParseTLVUseCase,
-        interpretNfcDataUseCase: InterpretNfcDataUseCase
-    ): ProcessNfcIntentUseCase {
-        return ProcessNfcIntentUseCase(parseTLVUseCase, interpretNfcDataUseCase)
-    }
+    fun provideScanDao(database: NfcDatabase): ScanDao = database.scanDao()
 }
 
-/**
- * Hilt module for binding repository implementations.
- */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
 
-    /**
-     * Binds NfcRepositoryImpl to NfcRepository interface.
-     */
     @Binds
     @Singleton
     abstract fun bindNfcRepository(impl: NfcRepositoryImpl): NfcRepository

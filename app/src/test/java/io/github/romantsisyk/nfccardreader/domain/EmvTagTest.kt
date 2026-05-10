@@ -2,6 +2,7 @@ package io.github.romantsisyk.nfccardreader.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EmvTagTest {
@@ -80,72 +81,43 @@ class EmvTagTest {
 
     @Test
     fun `test all tags have non-empty descriptions`() {
-        // Given
-        val allTags = EmvTag.entries
-
-        // When/Then
-        for (tag in allTags) {
+        for (tag in EmvTag.entries) {
             assertNotNull("Tag ${tag.name} should have a description", tag.description)
-            assert(tag.description.isNotEmpty()) { "Tag ${tag.name} has an empty description" }
+            assertTrue("Tag ${tag.name} has an empty description", tag.description.isNotEmpty())
         }
     }
 
     @Test
     fun `test all tags have valid tag values`() {
-        // Given
-        val allTags = EmvTag.entries.filter { it != EmvTag.UNKNOWN }
-
-        // When/Then
-        for (tag in allTags) {
-            // Tag values should be valid hexadecimal strings of 2 or 4 characters
-            assert(tag.tag.matches(Regex("^[0-9A-Fa-f]{2}([0-9A-Fa-f]{2})?$"))) { 
-                "Tag ${tag.name} has an invalid tag value: ${tag.tag}" 
-            }
+        for (tag in EmvTag.entries.filter { it != EmvTag.UNKNOWN }) {
+            assertTrue(
+                "Tag ${tag.name} has an invalid tag value: ${tag.tag}",
+                tag.tag.matches(Regex("^[0-9A-Fa-f]{2}([0-9A-Fa-f]{2})?$"))
+            )
         }
     }
 
     @Test
     fun `test no duplicate tag values`() {
-        // Given
-        val allTags = EmvTag.entries.filter { it != EmvTag.UNKNOWN }
-        val tagValues = mutableSetOf<String>()
+        val seen = mutableSetOf<String>()
         val duplicates = mutableListOf<String>()
-
-        // When
-        for (tag in allTags) {
-            if (!tagValues.add(tag.tag)) {
-                duplicates.add(tag.tag)
-            }
+        for (tag in EmvTag.entries.filter { it != EmvTag.UNKNOWN }) {
+            if (!seen.add(tag.tag)) duplicates.add(tag.tag)
         }
-
-        // Then
-        assert(duplicates.isEmpty()) { "Found duplicate tag values: $duplicates" }
+        assertTrue("Found duplicate tag values: $duplicates", duplicates.isEmpty())
     }
 
     @Test
     fun `test common tags are defined`() {
-        // Given
         val commonTagValues = listOf(
-            "5A",    // PAN
-            "5F20",  // Cardholder Name
-            "5F24",  // Expiration Date
-            "9F02",  // Amount, Authorized
-            "9F03",  // Amount, Other
-            "9F06",  // Application Identifier (AID)
-            "9F26",  // Application Cryptogram
-            "95",    // Terminal Verification Results
-            "9F34",  // Cardholder Verification Method Results
-            "82",    // Application Interchange Profile
-            "9F36",  // Application Transaction Counter
-            "9F37",  // Unpredictable Number
-            "9F10",  // Issuer Application Data
-            "9F1A"   // Terminal Country Code
+            "5A", "5F20", "5F24", "9F02", "9F03", "9F06",
+            "9F26", "95", "9F34", "82", "9F36", "9F37", "9F10", "9F1A"
         )
-
-        // When/Then
         for (tagValue in commonTagValues) {
-            val emvTag = EmvTag.fromTag(tagValue)
-            assert(emvTag != EmvTag.UNKNOWN) { "Common tag $tagValue is not defined in EmvTag enum" }
+            assertTrue(
+                "Common tag $tagValue is not defined in EmvTag enum",
+                EmvTag.fromTag(tagValue) != EmvTag.UNKNOWN
+            )
         }
     }
 

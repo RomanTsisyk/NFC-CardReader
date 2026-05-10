@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules (Android 6.0–11). Even though android:allowBackup="false"
+  short-circuits backup at the framework level, we declare an explicit
+  exclude-all policy in defense-in-depth: any future flip of allowBackup will
+  still leave card data out of cloud backups.
+-->
+<full-backup-content>
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="root" path="." />
+</full-backup-content>

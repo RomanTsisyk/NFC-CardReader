@@ -1,36 +1,21 @@
 package io.github.romantsisyk.nfccardreader.utils
 
+import java.math.BigInteger
+import java.util.Calendar
 import java.util.Currency
 import java.util.Locale
-import java.math.BigInteger
 
-/**
- * Utility object for decoding NFC/EMV data values.
- *
- * Provides methods to convert raw hex byte values from EMV tags into
- * human-readable formats. Supports decoding of amounts, currencies,
- * dates, service codes, and various card-specific data.
- *
- * All methods handle invalid input gracefully, returning sensible
- * defaults or descriptive error strings rather than throwing exceptions.
- */
 object NfcDataDecoder {
 
-    /** ISO 4217 currency code mappings (numeric to alpha) */
+    // ISO 4217 numeric (BCD 4-char) → alpha-3 currency code
     private val currencyCodes = mapOf(
-        "0840" to "USD",
-        "0978" to "EUR",
-        "0980" to "UAH",
-        "0826" to "GBP",
-        "0392" to "JPY",
-        "0124" to "CAD",
-        "0036" to "AUD",
-        "0756" to "CHF",
-        "0156" to "CNY",
-        "0643" to "RUB"
+        "0840" to "USD", "0978" to "EUR", "0980" to "UAH", "0826" to "GBP",
+        "0392" to "JPY", "0124" to "CAD", "0036" to "AUD", "0756" to "CHF",
+        "0156" to "CNY", "0643" to "RUB", "0356" to "INR", "0410" to "KRW",
+        "0702" to "SGD", "0344" to "HKD", "0554" to "NZD", "0710" to "ZAR",
+        "0792" to "TRY", "0784" to "AED", "0682" to "SAR", "0376" to "ILS"
     )
-    
-    // Карта для типів транзакцій
+
     private val transactionTypes = mapOf(
         "00" to "Purchase",
         "01" to "Cash Advance",
@@ -41,89 +26,118 @@ object NfcDataDecoder {
         "50" to "Quasi-Cash",
         "90" to "Authorization Only"
     )
-    
-    /**
-     * Decodes a transaction amount from BCD-encoded hex bytes.
-     *
-     * @param bytes List of hex string bytes representing the amount
-     * @return Formatted decimal amount string (e.g., "123.45")
-     */
+
+    // ISO 3166-1 numeric (decimal) → alpha-2 country code
+    // Country codes are BCD-encoded in EMV; strip leading zeros to get the decimal key.
+    private val iso3166NumericToAlpha2 = mapOf(
+        "840" to "US", "980" to "UA", "826" to "GB", "392" to "JP",
+        "124" to "CA", "36"  to "AU", "756" to "CH", "156" to "CN",
+        "643" to "RU", "276" to "DE", "250" to "FR", "380" to "IT",
+        "724" to "ES", "616" to "PL", "203" to "CZ", "348" to "HU",
+        "642" to "RO", "703" to "SK", "191" to "HR", "578" to "NO",
+        "752" to "SE", "208" to "DK", "246" to "FI", "372" to "IE",
+        "528" to "NL", "56"  to "BE", "76"  to "BR", "356" to "IN",
+        "410" to "KR", "702" to "SG", "344" to "HK", "554" to "NZ",
+        "710" to "ZA", "792" to "TR", "682" to "SA", "784" to "AE",
+        "376" to "IL", "484" to "MX", "32"  to "AR", "152" to "CL",
+        "170" to "CO", "604" to "PE", "858" to "UY"
+    )
+
     fun decodeAmount(bytes: List<String>): String {
-        try {
+        if (bytes.isEmpty()) return "0.00"
+        return try {
             val joinedHex = bytes.joinToString("")
             val amount = BigInteger(joinedHex, 16).toLong() / 100.0
-            return String.format(Locale.US, "%.2f", amount)
-        } catch (e: Exception) {
-            return "0.00"
+            String.format(Locale.US, "%.2f", amount)
+        } catch (e: NumberFormatException) {
+            "0.00"
         }
     }
 
     fun decodeCurrency(bytes: List<String>): String {
-        val hexValue = bytes.joinToString("")
-        return currencyCodes[hexValue] ?: try {
-            val numericCode = hexValue.toInt(16)
-            val currencies = Currency.getAvailableCurrencies()
-            val currency = currencies.find { it.numericCode == numericCode }
-            currency?.currencyCode ?: "Unknown Currency ($hexValue)"
+        val bcdKey = bytes.joinToString("")  // e.g. "0840"
+        currencyCodes[bcdKey]?.let { return it }
+        // Fallback: interpret BCD as decimal numeric code
+        return try {
+            val numericCode = bcdKey.trimStart('0').ifEmpty { "0" }.toInt()
+            Currency.getAvailableCurrencies()
+                .find { it.numericCode == numericCode }
+                ?.currencyCode ?: "Unknown Currency ($bcdKey)"
         } catch (e: Exception) {
-            "Unknown Currency ($hexValue)"
+            "Unknown Currency ($bcdKey)"
         }
     }
 
+    /**
+     * Decodes an EMV BCD-encoded YYMMDD date.
+     * EMV Book 3 §4.3 defines tag 9A as a 3-byte numeric (n6) BCD field — the
+     * standard does not encode the century. Per EMV CA convention, the century
+     * is inferred relative to the current date: a year more than ~50 years
+     * ahead is treated as 19xx, otherwise 20xx. This avoids the hard "20YY"
+     * assumption and keeps working past the year 2100.
+     */
     fun decodeDate(bytes: List<String>): String {
-        val year = "20${bytes[0]}"
-        val month = bytes[1]
-        val day = bytes[2]
-        return "$day.$month.$year"
+        if (bytes.size < 3) return "Invalid Date"
+        val (yy, mm, dd) = Triple(bytes[0], bytes[1], bytes[2])
+        // Validate BCD: each component must be two decimal digits
+        if (!yy.isBcdPair() || !mm.isBcdPair() || !dd.isBcdPair()) return "Invalid Date"
+        val month = mm.toInt(); val day = dd.toInt()
+        if (month !in 1..12 || day !in 1..31) return "Invalid Date"
+
+        val yearTwoDigit = yy.toInt()
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val currentCentury = (currentYear / 100) * 100
+        val currentYy = currentYear % 100
+        // Treat dates >50 years in the future as previous century (legacy data).
+        val century = if (yearTwoDigit - currentYy > 50) currentCentury - 100 else currentCentury
+        val fullYear = century + yearTwoDigit
+        return "$dd.$mm.$fullYear"
     }
-    
+
     fun decodeTime(bytes: List<String>): String {
-        val hour = bytes[0]
-        val minute = bytes[1]
-        val second = bytes[2]
-        return "$hour:$minute:$second"
+        if (bytes.size < 3) return "Invalid Time"
+        val (hh, min, sec) = Triple(bytes[0], bytes[1], bytes[2])
+        if (!hh.isBcdPair() || !min.isBcdPair() || !sec.isBcdPair()) return "Invalid Time"
+        val h = hh.toInt(); val m = min.toInt(); val s = sec.toInt()
+        if (h > 23 || m > 59 || s > 59) return "Invalid Time"
+        return "$hh:$min:$sec"
     }
-    
+
+    /**
+     * Decodes a BCD-encoded ISO 3166-1 numeric country code.
+     * Bytes contain packed BCD digits (e.g., 08 40 → "0840" → "840" → "US").
+     */
     fun decodeCountryCode(bytes: List<String>): String {
-        val hexValue = bytes.joinToString("")
-        val numericCode = hexValue.toInt(16)
-        return try {
-            val availableLocales = Locale.getAvailableLocales()
-            val locale = availableLocales.find { 
-                it.country.isNotEmpty() && it.country.hashCode() == numericCode
-            }
-            locale?.displayCountry ?: "Unknown Country ($hexValue)"
-        } catch (e: Exception) {
-            "Unknown Country ($hexValue)"
-        }
+        val bcdCode = bytes.joinToString("").trimStart('0').ifEmpty { "0" }
+        return iso3166NumericToAlpha2[bcdCode]
+            ?.let { alpha2 -> Locale("", alpha2).displayCountry }
+            ?: "Unknown Country ($bcdCode)"
     }
-    
-    fun decodeTransactionType(byte: String): String {
-        return transactionTypes[byte] ?: "Unknown Transaction Type ($byte)"
-    }
-    
+
+    fun decodeTransactionType(byte: String): String =
+        transactionTypes[byte] ?: "Unknown Transaction Type ($byte)"
+
     fun decodeApplicationIdentifier(bytes: List<String>): String {
-        val hexValue = bytes.joinToString("")
+        val hex = bytes.joinToString("")
         return when {
-            hexValue.startsWith("A000000003") -> "Visa"
-            hexValue.startsWith("A000000004") -> "MasterCard"
-            hexValue.startsWith("A000000025") -> "American Express"
-            hexValue.startsWith("A000000065") -> "JCB"
-            hexValue.startsWith("A000000152") -> "Discover/Diners Club"
-            hexValue.startsWith("A000000324") -> "UnionPay"
-            hexValue.startsWith("A000000677") -> "Mir"
-            hexValue.contains("D276000025") -> "Interac"
-            else -> "Unknown Card ($hexValue)"
+            hex.startsWith("A000000003") -> "Visa"
+            hex.startsWith("A000000004") -> "Mastercard"
+            hex.startsWith("A000000025") -> "American Express"
+            hex.startsWith("A000000065") -> "JCB"
+            hex.startsWith("A000000152") -> "Discover/Diners Club"
+            hex.startsWith("A000000324") -> "UnionPay"
+            hex.startsWith("A000000677") -> "Mir"
+            hex.contains("D276000025")   -> "Interac"
+            else -> "Unknown Card ($hex)"
         }
     }
-    
+
     fun decodeServiceCode(bytes: List<String>): String {
-        val serviceCode = bytes.joinToString("")
-        val firstDigit = serviceCode.substring(0, 1)
-        val secondDigit = serviceCode.substring(1, 2)
-        val thirdDigit = serviceCode.substring(2, 3)
-        
-        val interchange = when (firstDigit) {
+        if (bytes.size < 3) return "Incomplete Service Code"
+        val code = bytes.joinToString("")
+        if (code.length < 3) return "Incomplete Service Code"
+
+        val interchange = when (code[0].toString()) {
             "1" -> "International interchange"
             "2" -> "International interchange, with IC"
             "5" -> "National interchange only"
@@ -132,15 +146,13 @@ object NfcDataDecoder {
             "9" -> "Test"
             else -> "Unknown interchange"
         }
-        
-        val authorization = when (secondDigit) {
+        val authorization = when (code[1].toString()) {
             "0" -> "Normal authorization"
             "2" -> "By issuer"
             "4" -> "By issuer unless explicit agreement"
             else -> "Unknown authorization"
         }
-        
-        val services = when (thirdDigit) {
+        val services = when (code[2].toString()) {
             "0" -> "No restrictions, PIN required"
             "1" -> "No restrictions"
             "2" -> "Goods and services only"
@@ -151,14 +163,11 @@ object NfcDataDecoder {
             "7" -> "Goods and services only, use PIN if feasible"
             else -> "Unknown services"
         }
-        
         return "$interchange, $authorization, $services"
     }
-    
+
     fun decodeCardholderVerificationMethodResult(bytes: List<String>): String {
-        val hexValue = bytes.joinToString("")
-        
-        return when (hexValue) {
+        return when (bytes.joinToString("")) {
             "0000" -> "No CVM performed"
             "0001" -> "Plaintext PIN verified by ICC"
             "0002" -> "Enciphered PIN verified online"
@@ -168,16 +177,13 @@ object NfcDataDecoder {
             "0006" -> "Signature"
             "0007" -> "No CVM required"
             "0008" -> "Card CVM reference check failed"
-            else -> "Unknown CVM ($hexValue)"
+            else   -> "Unknown CVM (${bytes.joinToString("")})"
         }
     }
-    
+
     fun decodeFormFactorIndicator(bytes: List<String>): String {
-        val hexValue = bytes.joinToString("")
-        val firstByte = if (hexValue.length >= 2) hexValue.substring(0, 2) else "00"
-        
-        val formFactor = when (firstByte) {
-            "00" -> "Unknown form factor"
+        val code = bytes.firstOrNull()?.take(2) ?: return "Unknown form factor"
+        return when (code) {
             "01" -> "Physical card with magnetic stripe"
             "02" -> "Physical card with magnetic stripe and contact chip"
             "03" -> "Physical card with contact chip only"
@@ -192,7 +198,59 @@ object NfcDataDecoder {
             "42" -> "Mobile phone hosted a virtual card"
             else -> "Unknown form factor"
         }
-        
-        return formFactor
     }
+
+    /**
+     * Decodes an APDU SW1/SW2 status word (ISO/IEC 7816-4 + EMV Book 1 §9).
+     * Returns a human-readable description for common cases or a hex fallback.
+     */
+    fun decodeStatusWord(sw1: Int, sw2: Int): String {
+        val sw = ((sw1 and 0xFF) shl 8) or (sw2 and 0xFF)
+        return when (sw) {
+            0x9000 -> "Success"
+            0x6200 -> "Warning: state of non-volatile memory unchanged"
+            0x6281 -> "Returned data may be corrupted"
+            0x6282 -> "End of file/record reached before reading Le bytes"
+            0x6283 -> "Selected file invalidated"
+            0x6284 -> "FCI not formatted to ISO 7816-4"
+            0x6300 -> "Authentication failed"
+            0x6700 -> "Wrong length"
+            0x6800 -> "Functions in CLA not supported"
+            0x6881 -> "Logical channel not supported"
+            0x6882 -> "Secure messaging not supported"
+            0x6900 -> "Command not allowed"
+            0x6981 -> "Command incompatible with file structure"
+            0x6982 -> "Security status not satisfied"
+            0x6983 -> "Authentication method blocked"
+            0x6984 -> "Referenced data invalidated"
+            0x6985 -> "Conditions of use not satisfied"
+            0x6986 -> "Command not allowed (no current EF)"
+            0x6987 -> "Expected SM data objects missing"
+            0x6988 -> "SM data objects incorrect"
+            0x6A00 -> "Wrong parameters P1-P2"
+            0x6A80 -> "Incorrect parameters in data field"
+            0x6A81 -> "Function not supported"
+            0x6A82 -> "File not found"
+            0x6A83 -> "Record not found"
+            0x6A84 -> "Not enough memory space in file"
+            0x6A85 -> "Lc inconsistent with TLV structure"
+            0x6A86 -> "Incorrect parameters P1-P2"
+            0x6A87 -> "Lc inconsistent with P1-P2"
+            0x6A88 -> "Referenced data not found"
+            0x6B00 -> "Wrong parameters P1-P2"
+            0x6D00 -> "Instruction code not supported or invalid"
+            0x6E00 -> "Class not supported"
+            0x6F00 -> "No precise diagnosis"
+            else -> when {
+                sw1 == 0x61 -> "More data available (${sw and 0xFF} bytes) — issue GET RESPONSE"
+                sw1 == 0x6C -> "Wrong Le; correct Le=${sw and 0xFF}"
+                sw1 == 0x62 -> "Warning (state unchanged)"
+                sw1 == 0x63 -> "Warning (state changed); counter=${sw2 and 0x0F}"
+                else -> "Unknown status word (%04X)".format(sw)
+            }
+        }
+    }
+
+    /** Returns true if the hex string is exactly 2 chars of decimal digits (valid BCD byte). */
+    private fun String.isBcdPair(): Boolean = length == 2 && all { it.isDigit() }
 }

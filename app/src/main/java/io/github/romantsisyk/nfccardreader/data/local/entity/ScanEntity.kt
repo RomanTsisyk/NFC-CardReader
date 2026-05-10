@@ -5,20 +5,27 @@ import androidx.room.PrimaryKey
 import io.github.romantsisyk.nfccardreader.domain.model.NFCData
 
 /**
- * Room entity representing a saved NFC scan record.
- *
- * This entity stores the results of NFC card scans for history tracking.
+ * PCI-DSS persistence policy for this entity:
+ *  - PAN: only the masked form (`maskedPan`, BIN + last-4) is stored. Full PAN
+ *    must never be written here.
+ *  - Sensitive Authentication Data (SAD) — full track 1/2, CVV/CVC, PIN
+ *    blocks, expiration date in clear, cardholder name — must NOT appear in
+ *    any column. Upstream filtering in `NfcRepositoryImpl.SENSITIVE_TAGS`
+ *    strips these from `parsedTlvDataJson` before insert.
+ *  - `serviceCode` is cardholder data (not SAD); retained for analytics.
+ *  - The `rawResponse` and `expirationDate` columns were intentionally removed
+ *    in schema v2 (see NfcDatabase.MIGRATION_1_2).
+ *  - TODO(security): the table itself is currently stored unencrypted — see
+ *    SQLCipher TODO on NfcDatabase.
  */
 @Entity(tableName = "scan_history")
 data class ScanEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val timestamp: Long = System.currentTimeMillis(),
-    val rawResponse: String,
     val cardType: String?,
     val applicationLabel: String?,
     val maskedPan: String?,
-    val expirationDate: String?,
     val transactionAmount: String?,
     val currencyCode: String?,
     val transactionDate: String?,
@@ -29,15 +36,10 @@ data class ScanEntity(
     val formFactorIndicator: String?,
     val parsedTlvDataJson: String
 ) {
-    /**
-     * Converts this entity to domain model.
-     *
-     * @param parsedTlvData The deserialized TLV data map
-     * @return NFCData domain model
-     */
     fun toNFCData(parsedTlvData: Map<String, String>): NFCData {
         return NFCData(
-            rawResponse = rawResponse,
+            dbId = id,
+            rawResponse = "",
             cardType = cardType,
             applicationLabel = applicationLabel,
             transactionAmount = transactionAmount,
@@ -53,20 +55,11 @@ data class ScanEntity(
     }
 
     companion object {
-        /**
-         * Creates an entity from domain model.
-         *
-         * @param nfcData The domain model
-         * @param parsedTlvDataJson JSON string of parsed TLV data
-         * @return ScanEntity for database storage
-         */
         fun fromNFCData(nfcData: NFCData, parsedTlvDataJson: String): ScanEntity {
             return ScanEntity(
-                rawResponse = nfcData.rawResponse,
                 cardType = nfcData.cardType,
                 applicationLabel = nfcData.applicationLabel,
-                maskedPan = nfcData.parsedTlvData["Application PAN"],
-                expirationDate = nfcData.parsedTlvData["Expiration Date"],
+                maskedPan = nfcData.parsedTlvData["APPLICATION_PAN"],
                 transactionAmount = nfcData.transactionAmount,
                 currencyCode = nfcData.currencyCode,
                 transactionDate = nfcData.transactionDate,

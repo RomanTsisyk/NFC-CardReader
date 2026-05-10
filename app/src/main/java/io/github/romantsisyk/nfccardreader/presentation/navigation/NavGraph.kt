@@ -1,6 +1,9 @@
 package io.github.romantsisyk.nfccardreader.presentation.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -8,44 +11,41 @@ import io.github.romantsisyk.nfccardreader.presentation.ui.HistoryScreen
 import io.github.romantsisyk.nfccardreader.presentation.ui.NFCReaderScreen
 import io.github.romantsisyk.nfccardreader.presentation.viewmodel.NFCReaderViewModel
 
-/**
- * Navigation routes for the application.
- */
 object NavRoutes {
     const val READER = "reader"
     const val HISTORY = "history"
 }
 
-/**
- * Main navigation graph for the application.
- *
- * @param navController The navigation controller
- * @param viewModel The shared ViewModel
- */
 @Composable
-fun NfcNavGraph(
-    navController: NavHostController,
-    viewModel: NFCReaderViewModel
-) {
+fun NfcNavGraph(navController: NavHostController) {
+    val viewModel: NFCReaderViewModel = hiltViewModel()
+
     NavHost(
         navController = navController,
         startDestination = NavRoutes.READER
     ) {
         composable(NavRoutes.READER) {
+            val uiState by viewModel.uiState.collectAsState()
             NFCReaderScreen(
-                viewModel = viewModel,
+                uiState = uiState,
+                onClearData = viewModel::clearNfcData,
+                onSaveScan = viewModel::saveCurrentScan,
+                onDismissError = viewModel::dismissError,
                 onNavigateToHistory = {
-                    navController.navigate(NavRoutes.HISTORY)
+                    navController.navigate(NavRoutes.HISTORY) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
 
         composable(NavRoutes.HISTORY) {
+            val history by viewModel.scanHistory.collectAsState()
             HistoryScreen(
-                viewModel = viewModel,
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
+                history = history,
+                onDelete = viewModel::deleteScan,
+                onClearAll = viewModel::clearHistory,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

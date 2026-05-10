@@ -86,11 +86,34 @@ class NfcDataMaskerTest {
     fun `test maskTrack2Data with empty string`() {
         // Given
         val track2 = ""
-        
+
         // When
         val result = NfcDataMasker.maskTrack2Data(track2)
-        
+
         // Then
         assertEquals("", result)
+    }
+
+    @Test
+    fun `maskPan strips BCD pad nibble for 15-digit Amex PAN`() {
+        // 15-digit Amex PAN encoded in EMV BCD with trailing F nibble pad.
+        val amexBcd = "378282246310005F"
+
+        val result = NfcDataMasker.maskPan(amexBcd)
+
+        // Padding nibble must be removed before masking, and exactly the last
+        // 4 digits of the real PAN must remain visible.
+        assertEquals("XXXXXXXXXXX0005", result)
+        assertEquals(15, result.length)
+        assertTrue("Must not leak any of the leading PAN digits", !result.contains("3782"))
+    }
+
+    @Test
+    fun `maskPan with trailing lowercase f pad is also stripped`() {
+        val amexBcd = "378282246310005f"
+
+        val result = NfcDataMasker.maskPan(amexBcd)
+
+        assertEquals("XXXXXXXXXXX0005", result)
     }
 }

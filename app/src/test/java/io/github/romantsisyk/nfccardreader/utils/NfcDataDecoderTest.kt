@@ -179,13 +179,13 @@ class NfcDataDecoderTest {
     @Test
     fun `test decodeApplicationIdentifier with MasterCard AID`() {
         // Given
-        val bytes = createHexList("A0 00 00 00 04 10 10") // MasterCard
-        
+        val bytes = createHexList("A0 00 00 00 04 10 10") // Mastercard
+
         // When
         val result = NfcDataDecoder.decodeApplicationIdentifier(bytes)
-        
+
         // Then
-        assertEquals("MasterCard", result)
+        assertEquals("Mastercard", result)
     }
 
     @Test
@@ -290,13 +290,46 @@ class NfcDataDecoderTest {
 
     @Test
     fun `test decodeFormFactorIndicator with unknown form factor`() {
-        // Given
-        val bytes = createHexList("99 00 00 00") // Unknown
-        
-        // When
-        val result = NfcDataDecoder.decodeFormFactorIndicator(bytes)
-        
-        // Then
-        assertEquals("Unknown form factor", result)
+        val bytes = createHexList("99 00 00 00")
+        assertEquals("Unknown form factor", NfcDataDecoder.decodeFormFactorIndicator(bytes))
+    }
+
+    // Edge case: bounds checks
+    @Test
+    fun `decodeDate with fewer than 3 bytes returns Invalid Date`() {
+        assertEquals("Invalid Date", NfcDataDecoder.decodeDate(listOf("23", "04")))
+        assertEquals("Invalid Date", NfcDataDecoder.decodeDate(listOf("23")))
+        assertEquals("Invalid Date", NfcDataDecoder.decodeDate(emptyList()))
+    }
+
+    @Test
+    fun `decodeTime with fewer than 3 bytes returns Invalid Time`() {
+        assertEquals("Invalid Time", NfcDataDecoder.decodeTime(listOf("10", "35")))
+        assertEquals("Invalid Time", NfcDataDecoder.decodeTime(emptyList()))
+    }
+
+    @Test
+    fun `decodeAmount with empty list returns 0 00`() {
+        assertEquals("0.00", NfcDataDecoder.decodeAmount(emptyList()))
+    }
+
+    @Test
+    fun `decodeServiceCode with fewer than 3 bytes returns Incomplete Service Code`() {
+        assertEquals("Incomplete Service Code", NfcDataDecoder.decodeServiceCode(listOf("1", "0")))
+        assertEquals("Incomplete Service Code", NfcDataDecoder.decodeServiceCode(emptyList()))
+    }
+
+    @Test
+    fun `decodeCountryCode with unknown code returns Unknown Country`() {
+        val bytes = createHexList("99 99")
+        assertTrue(NfcDataDecoder.decodeCountryCode(bytes).startsWith("Unknown Country"))
+    }
+
+    @Test
+    fun `decodeCountryCode for USA returns non-empty result`() {
+        // 840 = USA in ISO 3166-1
+        val bytes = createHexList("03 48")
+        val result = NfcDataDecoder.decodeCountryCode(bytes)
+        assertTrue("Should return a non-empty country name or Unknown", result.isNotEmpty())
     }
 }

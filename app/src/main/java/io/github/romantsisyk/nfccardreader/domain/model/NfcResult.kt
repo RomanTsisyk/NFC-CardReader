@@ -52,7 +52,7 @@ sealed class NfcResult<out T> {
      */
     fun getOrNull(): T? = when (this) {
         is Success -> data
-        else -> null
+        is Error, is Loading -> null
     }
 
     /**
@@ -60,7 +60,7 @@ sealed class NfcResult<out T> {
      */
     fun errorOrNull(): NfcError? = when (this) {
         is Error -> error
-        else -> null
+        is Success, is Loading -> null
     }
 }
 
