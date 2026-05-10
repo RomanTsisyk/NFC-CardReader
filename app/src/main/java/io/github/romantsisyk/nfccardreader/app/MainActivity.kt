@@ -42,10 +42,13 @@ class MainActivity : ComponentActivity() {
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        // Use FLAG_IMMUTABLE: NFC foreground dispatch delivers tag data via onNewIntent(),
+        // not by mutating the wrapped Intent. FLAG_MUTABLE is unnecessary and weakens
+        // PendingIntent integrity (Android 12+ best practice; CWE-927).
         nfcPendingIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_MUTABLE
+            PendingIntent.FLAG_IMMUTABLE
         )
 
         setContent {
@@ -82,6 +85,13 @@ class MainActivity : ComponentActivity() {
     private fun handleNfcIntent() {
         val currentIntent = intent ?: return
         if (currentIntent.action in NFC_ACTIONS) {
+            // TODO(security): the manifest exports MainActivity with an
+            //  ACTION_TAG_DISCOVERED intent-filter, which means any app can
+            //  start the Activity with a forged Intent carrying a fabricated
+            //  EXTRA_TAG. The downstream parsing use-case must defensively
+            //  validate the Tag/Ndef extras before processing. Consider
+            //  also gating handleNfcIntent on Intent.getPackage()==null and
+            //  verifying the calling UID via referrer where feasible.
             viewModel.processNfcIntent(currentIntent)
             // Consume the intent so onResume doesn't re-fire it on next foreground
             setIntent(Intent())

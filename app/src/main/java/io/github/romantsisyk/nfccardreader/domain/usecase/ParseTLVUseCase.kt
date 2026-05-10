@@ -31,6 +31,12 @@ class ParseTLVUseCase @Inject constructor() {
 
         while (index < end) {
 
+            // ── Skip BER-TLV padding bytes (0x00) between fields ──────────
+            // EMV Book 3 §4.2 allows 0x00 as inter-TLV padding. 0xFF is NOT
+            // skipped because it's a legal (private-use) tag start byte.
+            val peek = data[index].toInt() and 0xFF
+            if (peek == 0x00) { index++; continue }
+
             // ── Read tag ──────────────────────────────────────────────────
             if (index >= end) break
             val firstByte = data[index].toInt() and 0xFF
@@ -72,7 +78,15 @@ class ParseTLVUseCase @Inject constructor() {
 
             // ── Process value ─────────────────────────────────────────────
             if (isConstructed) {
-                // Recurse into template; merge children into result
+                // Record the constructed template itself (raw hex) so callers
+                // can see e.g. APPLICATION_TEMPLATE / FCI bytes, then recurse
+                // into children (children win on key collision via putAll).
+                val rawHex = data.sliceArray(valueStart until valueEnd)
+                    .joinToString("") { "%02X".format(it) }
+                when (val emvTag = EmvTag.fromTag(tag)) {
+                    EmvTag.UNKNOWN -> result["Tag $tag"] = rawHex
+                    else -> result[emvTag.name] = rawHex
+                }
                 result.putAll(parseTlv(data, valueStart, valueEnd))
             } else {
                 val value = data.sliceArray(valueStart until valueEnd)

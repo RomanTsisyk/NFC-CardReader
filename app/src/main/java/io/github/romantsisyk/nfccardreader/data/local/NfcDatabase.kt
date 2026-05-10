@@ -7,6 +7,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.github.romantsisyk.nfccardreader.data.local.dao.ScanDao
 import io.github.romantsisyk.nfccardreader.data.local.entity.ScanEntity
 
+/**
+ * TODO(security/PCI-DSS): The Room database is currently UNENCRYPTED. SQLite WAL/SHM
+ * journal files may retain card-data remnants on disk even after row deletion.
+ * Migrate to SQLCipher (net.zetetic:android-database-sqlcipher) with a key stored
+ * in the Android Keystore (StrongBox where available) and pass a
+ * SupportFactory(passphrase) to Room.databaseBuilder(). Tracked separately —
+ * out of scope for this PR (requires schema/build-config changes and key-rotation
+ * design).
+ */
 @Database(
     entities = [ScanEntity::class],
     version = 2,

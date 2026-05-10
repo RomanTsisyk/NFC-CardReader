@@ -32,13 +32,15 @@ class NfcRepositoryImpl @Inject constructor(
             try {
                 NfcResult.Success(processNfcIntentUseCase.execute(intent))
             } catch (e: IllegalArgumentException) {
-                NfcResult.Error(NfcError.TAG_NOT_FOUND, "No NFC tag found", e)
+                // PCI-DSS: do not propagate raw exception — its message/toString may contain
+                // unmasked TLV bytes, PAN, or track data parsed from the card.
+                NfcResult.Error(NfcError.TAG_NOT_FOUND, "No NFC tag found (${e.javaClass.simpleName})")
             } catch (e: UnsupportedOperationException) {
-                NfcResult.Error(NfcError.UNSUPPORTED_TAG, "Unsupported NFC tag type", e)
+                NfcResult.Error(NfcError.UNSUPPORTED_TAG, "Unsupported NFC tag type (${e.javaClass.simpleName})")
             } catch (e: IllegalStateException) {
-                NfcResult.Error(NfcError.INITIALIZATION_ERROR, "Initialization error", e)
+                NfcResult.Error(NfcError.INITIALIZATION_ERROR, "Initialization error (${e.javaClass.simpleName})")
             } catch (e: Exception) {
-                NfcResult.Error(NfcError.COMMUNICATION_ERROR, "Communication error with NFC tag", e)
+                NfcResult.Error(NfcError.COMMUNICATION_ERROR, "Communication error with NFC tag (${e.javaClass.simpleName})")
             }
         }
     }
@@ -50,7 +52,8 @@ class NfcRepositoryImpl @Inject constructor(
                 val entity = ScanEntity.fromNFCData(nfcData, json)
                 NfcResult.Success(scanDao.insert(entity))
             } catch (e: Exception) {
-                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to save scan record", e)
+                // Scrub: a Room/SQLite exception message may include the offending row values.
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to save scan record (${e.javaClass.simpleName})")
             }
         }
     }
@@ -73,7 +76,7 @@ class NfcRepositoryImpl @Inject constructor(
                     NfcResult.Error(NfcError.INVALID_DATA, "Scan record not found")
                 }
             } catch (e: Exception) {
-                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to retrieve scan record", e)
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to retrieve scan record (${e.javaClass.simpleName})")
             }
         }
     }
@@ -84,7 +87,7 @@ class NfcRepositoryImpl @Inject constructor(
                 scanDao.deleteById(id)
                 NfcResult.Success(Unit)
             } catch (e: Exception) {
-                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to delete scan record", e)
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to delete scan record (${e.javaClass.simpleName})")
             }
         }
     }
@@ -95,7 +98,7 @@ class NfcRepositoryImpl @Inject constructor(
                 scanDao.deleteAll()
                 NfcResult.Success(Unit)
             } catch (e: Exception) {
-                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to clear history", e)
+                NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to clear history (${e.javaClass.simpleName})")
             }
         }
     }
@@ -110,7 +113,7 @@ class NfcRepositoryImpl @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to check NFC availability", e)
+            NfcResult.Error(NfcError.UNKNOWN_ERROR, "Failed to check NFC availability (${e.javaClass.simpleName})")
         }
     }
 
@@ -134,7 +137,13 @@ class NfcRepositoryImpl @Inject constructor(
             // Track 1 discretionary data (tag 9F1F — not in enum, stored as raw tag key)
             "Tag 9F1F",
             // Issuer-specific data that may contain raw track data
-            "Tag 56"
+            "Tag 56",
+            // DF Name (tag 84) — application identifier that can fingerprint cardholder app selection
+            "Tag 84",
+            // CVM Results (tag 9F34) — cardholder verification method outcome,
+            // may leak whether PIN/signature was used and the result byte
+            "Tag 9F34",
+            "CVM_RESULTS"
         )
     }
 

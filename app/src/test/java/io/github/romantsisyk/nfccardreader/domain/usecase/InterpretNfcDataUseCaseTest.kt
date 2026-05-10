@@ -1,12 +1,16 @@
 package io.github.romantsisyk.nfccardreader.domain.usecase
 
 import io.github.romantsisyk.nfccardreader.domain.EmvTag
-import io.github.romantsisyk.nfccardreader.util.createByteArrayFromHex
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
+/**
+ * InterpretNfcDataUseCase consumes the parsed TLV map (Map<String, String>) produced by
+ * ParseTLVUseCase and translates it into the human-readable NFCData domain object.
+ */
 class InterpretNfcDataUseCaseTest {
 
     private lateinit var interpretNfcDataUseCase: InterpretNfcDataUseCase
@@ -17,54 +21,66 @@ class InterpretNfcDataUseCaseTest {
     }
 
     @Test
-    fun `test execute with empty response`() {
-        // Given
-        val emptyResponse = ByteArray(0)
+    fun `execute with empty map returns NFCData with no card type`() {
+        val result = interpretNfcDataUseCase.execute(emptyMap())
 
-        // When
-        val result = interpretNfcDataUseCase.execute(emptyResponse)
-
-        // Then
-        assertEquals("", result.rawResponse)
+        assertNull(result.cardType)
+        assertNull(result.applicationLabel)
+        assertEquals(emptyMap<String, String>(), result.parsedTlvData)
     }
 
     @Test
-    fun `test execute with card type tag`() {
-        // Given
-        val response = createByteArrayFromHex("6F 04 A0 00 00 03")
+    fun `execute resolves Visa AID from APPLICATION_IDENTIFIER_ADDITIONAL`() {
+        val parsed = mapOf(
+            EmvTag.APPLICATION_IDENTIFIER_ADDITIONAL.name to "A0000000031010"
+        )
 
-        // When
-        val result = interpretNfcDataUseCase.execute(response)
+        val result = interpretNfcDataUseCase.execute(parsed)
 
-        // Then
-        assertEquals("6F 04 A0 00 00 03", result.rawResponse)
-        assertEquals("EMV Payment Card", result.cardType)
+        assertEquals("Visa", result.cardType)
     }
 
     @Test
-    fun `test execute with application label tag`() {
-        // Given
-        val response = createByteArrayFromHex("50 04 56 49 53 41") // "VISA" in ASCII
+    fun `execute resolves MasterCard AID from APPLICATION_IDENTIFIER`() {
+        val parsed = mapOf(
+            EmvTag.APPLICATION_IDENTIFIER.name to "A0000000041010"
+        )
 
-        // When
-        val result = interpretNfcDataUseCase.execute(response)
+        val result = interpretNfcDataUseCase.execute(parsed)
 
-        // Then
-        assertEquals("50 04 56 49 53 41", result.rawResponse)
+        assertEquals("MasterCard", result.cardType)
+    }
+
+    @Test
+    fun `execute decodes application label hex into UTF-8 string`() {
+        // "VISA" in ASCII hex = 56 49 53 41
+        val parsed = mapOf(EmvTag.APPLICATION_LABEL.name to "56495341")
+
+        val result = interpretNfcDataUseCase.execute(parsed)
+
         assertEquals("VISA", result.applicationLabel)
     }
 
     @Test
-    fun `test execute with multiple tags`() {
-        // Given
-        val response = createByteArrayFromHex("6F 04 A0 00 00 03 50 04 56 49 53 41")
+    fun `execute decodes currency code EUR`() {
+        // 0x0978 = 978 = EUR
+        val parsed = mapOf(EmvTag.CURRENCY_CODE.name to "0978")
 
-        // When
-        val result = interpretNfcDataUseCase.execute(response)
+        val result = interpretNfcDataUseCase.execute(parsed)
 
-        // Then
-        assertEquals("6F 04 A0 00 00 03 50 04 56 49 53 41", result.rawResponse)
-        assertEquals("EMV Payment Card", result.cardType)
-        assertEquals("VISA", result.applicationLabel)
+        assertEquals("EUR", result.currencyCode)
+    }
+
+    @Test
+    fun `execute preserves parsed TLV data on output`() {
+        val parsed = mapOf(
+            EmvTag.APPLICATION_PAN.name to "XXXXXXXXXXXX1111",
+            EmvTag.EXPIRATION_DATE.name to "250228"
+        )
+
+        val result = interpretNfcDataUseCase.execute(parsed)
+
+        assertEquals(parsed, result.parsedTlvData)
+        assertNotNull(result.parsedTlvData[EmvTag.APPLICATION_PAN.name])
     }
 }

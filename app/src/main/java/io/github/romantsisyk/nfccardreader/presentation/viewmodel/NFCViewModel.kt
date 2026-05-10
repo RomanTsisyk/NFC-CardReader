@@ -99,10 +99,11 @@ class NFCReaderViewModel @Inject constructor(
     fun deleteScan(id: Long) {
         viewModelScope.launch {
             when (val result = repository.deleteScan(id)) {
+                is NfcResult.Success -> Unit
                 is NfcResult.Error -> _uiState.update {
                     it.copy(error = result.error, errorMessage = result.message)
                 }
-                else -> Unit
+                is NfcResult.Loading -> Unit
             }
         }
     }
@@ -110,10 +111,11 @@ class NFCReaderViewModel @Inject constructor(
     fun clearHistory() {
         viewModelScope.launch {
             when (val result = repository.clearHistory()) {
+                is NfcResult.Success -> Unit
                 is NfcResult.Error -> _uiState.update {
                     it.copy(error = result.error, errorMessage = result.message)
                 }
-                else -> Unit
+                is NfcResult.Loading -> Unit
             }
         }
     }

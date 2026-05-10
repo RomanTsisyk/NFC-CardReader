@@ -124,6 +124,19 @@
     public static int wtf(...);
 }
 
+# Strip Throwable.printStackTrace (could dump card data via exception messages)
+-assumenosideeffects class java.lang.Throwable {
+    public void printStackTrace();
+}
+
+# Strip System.out / System.err writes that may have slipped in
+-assumenosideeffects class java.io.PrintStream {
+    public void println(%);
+    public void println(**);
+    public void print(%);
+    public void print(**);
+}
+
 # ============================================
 # NFC Classes - Keep for Android system
 # ============================================

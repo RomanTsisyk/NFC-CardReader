@@ -47,6 +47,14 @@ enum class EmvTag(val tag: String, val description: String = "") {
     VISA_SPECIFIC_DATA("A5", "Visa Specific Data"),
     APPLICATION_IDENTIFIER_ADDITIONAL("9F06", "Application Identifier (AID)"), // Added missing tag
 
+    // EMV protocol-flow tags (used by GPO / READ RECORD)
+    APPLICATION_FILE_LOCATOR("94", "Application File Locator"),
+    PDOL("9F38", "Processing Options Data Object List"),
+    RESPONSE_MESSAGE_TEMPLATE_FORMAT_1("80", "Response Message Template Format 1"),
+    RESPONSE_MESSAGE_TEMPLATE_FORMAT_2("77", "Response Message Template Format 2"),
+    FCI_PROPRIETARY_TEMPLATE("A5", "FCI Proprietary Template"),
+    FCI_ISSUER_DISCRETIONARY_DATA("BF0C", "FCI Issuer Discretionary Data"),
+
     // Fallback for unknown tags
     UNKNOWN("FFFF", "Unknown Tag");
 

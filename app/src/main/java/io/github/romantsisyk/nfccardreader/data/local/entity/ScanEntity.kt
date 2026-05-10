@@ -4,6 +4,20 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import io.github.romantsisyk.nfccardreader.domain.model.NFCData
 
+/**
+ * PCI-DSS persistence policy for this entity:
+ *  - PAN: only the masked form (`maskedPan`, BIN + last-4) is stored. Full PAN
+ *    must never be written here.
+ *  - Sensitive Authentication Data (SAD) — full track 1/2, CVV/CVC, PIN
+ *    blocks, expiration date in clear, cardholder name — must NOT appear in
+ *    any column. Upstream filtering in `NfcRepositoryImpl.SENSITIVE_TAGS`
+ *    strips these from `parsedTlvDataJson` before insert.
+ *  - `serviceCode` is cardholder data (not SAD); retained for analytics.
+ *  - The `rawResponse` and `expirationDate` columns were intentionally removed
+ *    in schema v2 (see NfcDatabase.MIGRATION_1_2).
+ *  - TODO(security): the table itself is currently stored unencrypted — see
+ *    SQLCipher TODO on NfcDatabase.
+ */
 @Entity(tableName = "scan_history")
 data class ScanEntity(
     @PrimaryKey(autoGenerate = true)

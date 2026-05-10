@@ -1,6 +1,7 @@
 package io.github.romantsisyk.nfccardreader.utils
 
 import java.math.BigInteger
+import java.util.Calendar
 import java.util.Currency
 import java.util.Locale
 
@@ -67,6 +68,14 @@ object NfcDataDecoder {
         }
     }
 
+    /**
+     * Decodes an EMV BCD-encoded YYMMDD date.
+     * EMV Book 3 §4.3 defines tag 9A as a 3-byte numeric (n6) BCD field — the
+     * standard does not encode the century. Per EMV CA convention, the century
+     * is inferred relative to the current date: a year more than ~50 years
+     * ahead is treated as 19xx, otherwise 20xx. This avoids the hard "20YY"
+     * assumption and keeps working past the year 2100.
+     */
     fun decodeDate(bytes: List<String>): String {
         if (bytes.size < 3) return "Invalid Date"
         val (yy, mm, dd) = Triple(bytes[0], bytes[1], bytes[2])
@@ -74,7 +83,15 @@ object NfcDataDecoder {
         if (!yy.isBcdPair() || !mm.isBcdPair() || !dd.isBcdPair()) return "Invalid Date"
         val month = mm.toInt(); val day = dd.toInt()
         if (month !in 1..12 || day !in 1..31) return "Invalid Date"
-        return "$dd.$mm.20$yy"
+
+        val yearTwoDigit = yy.toInt()
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val currentCentury = (currentYear / 100) * 100
+        val currentYy = currentYear % 100
+        // Treat dates >50 years in the future as previous century (legacy data).
+        val century = if (yearTwoDigit - currentYy > 50) currentCentury - 100 else currentCentury
+        val fullYear = century + yearTwoDigit
+        return "$dd.$mm.$fullYear"
     }
 
     fun decodeTime(bytes: List<String>): String {
@@ -180,6 +197,57 @@ object NfcDataDecoder {
             "41" -> "Physical card hosted a virtual card"
             "42" -> "Mobile phone hosted a virtual card"
             else -> "Unknown form factor"
+        }
+    }
+
+    /**
+     * Decodes an APDU SW1/SW2 status word (ISO/IEC 7816-4 + EMV Book 1 §9).
+     * Returns a human-readable description for common cases or a hex fallback.
+     */
+    fun decodeStatusWord(sw1: Int, sw2: Int): String {
+        val sw = ((sw1 and 0xFF) shl 8) or (sw2 and 0xFF)
+        return when (sw) {
+            0x9000 -> "Success"
+            0x6200 -> "Warning: state of non-volatile memory unchanged"
+            0x6281 -> "Returned data may be corrupted"
+            0x6282 -> "End of file/record reached before reading Le bytes"
+            0x6283 -> "Selected file invalidated"
+            0x6284 -> "FCI not formatted to ISO 7816-4"
+            0x6300 -> "Authentication failed"
+            0x6700 -> "Wrong length"
+            0x6800 -> "Functions in CLA not supported"
+            0x6881 -> "Logical channel not supported"
+            0x6882 -> "Secure messaging not supported"
+            0x6900 -> "Command not allowed"
+            0x6981 -> "Command incompatible with file structure"
+            0x6982 -> "Security status not satisfied"
+            0x6983 -> "Authentication method blocked"
+            0x6984 -> "Referenced data invalidated"
+            0x6985 -> "Conditions of use not satisfied"
+            0x6986 -> "Command not allowed (no current EF)"
+            0x6987 -> "Expected SM data objects missing"
+            0x6988 -> "SM data objects incorrect"
+            0x6A00 -> "Wrong parameters P1-P2"
+            0x6A80 -> "Incorrect parameters in data field"
+            0x6A81 -> "Function not supported"
+            0x6A82 -> "File not found"
+            0x6A83 -> "Record not found"
+            0x6A84 -> "Not enough memory space in file"
+            0x6A85 -> "Lc inconsistent with TLV structure"
+            0x6A86 -> "Incorrect parameters P1-P2"
+            0x6A87 -> "Lc inconsistent with P1-P2"
+            0x6A88 -> "Referenced data not found"
+            0x6B00 -> "Wrong parameters P1-P2"
+            0x6D00 -> "Instruction code not supported or invalid"
+            0x6E00 -> "Class not supported"
+            0x6F00 -> "No precise diagnosis"
+            else -> when {
+                sw1 == 0x61 -> "More data available (${sw and 0xFF} bytes) — issue GET RESPONSE"
+                sw1 == 0x6C -> "Wrong Le; correct Le=${sw and 0xFF}"
+                sw1 == 0x62 -> "Warning (state unchanged)"
+                sw1 == 0x63 -> "Warning (state changed); counter=${sw2 and 0x0F}"
+                else -> "Unknown status word (%04X)".format(sw)
+            }
         }
     }
 
