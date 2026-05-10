@@ -48,7 +48,7 @@ class InterpretNfcDataUseCaseTest {
 
         val result = interpretNfcDataUseCase.execute(parsed)
 
-        assertEquals("MasterCard", result.cardType)
+        assertEquals("Mastercard", result.cardType)
     }
 
     @Test

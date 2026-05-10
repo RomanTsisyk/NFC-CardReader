@@ -44,8 +44,7 @@ enum class EmvTag(val tag: String, val description: String = "") {
     CARD_AUTHENTICATION_METHOD("9F6C", "Card Authentication Method"),
     CERTIFICATION_AUTHORITY_PUBLIC_KEY_INDEX("9F22", "Certification Authority Public Key Index"),
     MASTERCARD_SPECIFIC_DATA("A0", "MasterCard Specific Data"),
-    VISA_SPECIFIC_DATA("A5", "Visa Specific Data"),
-    APPLICATION_IDENTIFIER_ADDITIONAL("9F06", "Application Identifier (AID)"), // Added missing tag
+    APPLICATION_IDENTIFIER_ADDITIONAL("9F06", "Application Identifier (AID)"),
 
     // EMV protocol-flow tags (used by GPO / READ RECORD)
     APPLICATION_FILE_LOCATOR("94", "Application File Locator"),

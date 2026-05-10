@@ -179,13 +179,13 @@ class NfcDataDecoderTest {
     @Test
     fun `test decodeApplicationIdentifier with MasterCard AID`() {
         // Given
-        val bytes = createHexList("A0 00 00 00 04 10 10") // MasterCard
-        
+        val bytes = createHexList("A0 00 00 00 04 10 10") // Mastercard
+
         // When
         val result = NfcDataDecoder.decodeApplicationIdentifier(bytes)
-        
+
         // Then
-        assertEquals("MasterCard", result)
+        assertEquals("Mastercard", result)
     }
 
     @Test

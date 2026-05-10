@@ -68,8 +68,8 @@ class ParseTLVUseCaseTest {
 
     @Test
     fun `unknown tag is stored with Tag prefix`() {
-        // Tag FF is UNKNOWN, length 02, 2 bytes
-        val data = createByteArrayFromHex("FF 02 AA BB")
+        // Tag 01 is single-byte primitive UNKNOWN (not in EmvTag enum)
+        val data = createByteArrayFromHex("01 02 AA BB")
         val result = parseTLVUseCase.execute(data)
 
         assertTrue("Unknown tag should be stored with 'Tag' prefix",
